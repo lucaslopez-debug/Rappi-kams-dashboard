@@ -1,0 +1,10 @@
+.env
+.env.local
+.env*.local
+logs
+Scripts
+node_modules
+.next
+test.js
+autostart.ps1
+engaged-cosine-506020-k7-bb7bf7ec46df.json
