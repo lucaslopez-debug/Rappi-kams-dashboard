@@ -424,12 +424,15 @@ body {
   margin-bottom: 0;
 }
 
+/* Color del logo de Rappi (var(--secondary)) para diferenciar las acciones
+   de Importar/Exportar del resto de los botones (que usan el amarillo del
+   dashboard) — así se distinguen de un vistazo. */
 .md-import-btn {
   padding: 8px 16px;
   border-radius: 8px;
-  border: 2px solid var(--border-gray);
-  background: transparent;
-  color: var(--text-light);
+  border: 2px solid var(--secondary);
+  background: var(--secondary);
+  color: #FFFFFF;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -438,8 +441,8 @@ body {
 }
 
 .md-import-btn:hover:not(:disabled) {
-  border-color: var(--primary);
-  color: var(--text-dark);
+  background: #FF3B3B;
+  border-color: #FF3B3B;
 }
 
 .md-import-btn:disabled {
@@ -649,9 +652,9 @@ body {
 .export-resumen-btn {
   padding: 8px 16px;
   border-radius: 8px;
-  border: 2px solid var(--border-gray);
-  background: transparent;
-  color: var(--text-light);
+  border: 2px solid var(--secondary);
+  background: var(--secondary);
+  color: #FFFFFF;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -660,8 +663,8 @@ body {
 }
 
 .export-resumen-btn:hover {
-  border-color: var(--primary);
-  color: var(--text-dark);
+  background: #FF3B3B;
+  border-color: #FF3B3B;
 }
 
 /* Modal de Resumen Ejecutivo: overlay oscuro + tarjeta capturable por
