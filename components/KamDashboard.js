@@ -299,7 +299,7 @@ function DiffCell({ value, decimals = 1, suffix = '%' }) {
   )
 }
 
-// Encabezado ordenable de las tablas de Top/Bottom y Churn: un solo click
+// Encabezado ordenable de las tablas de Top/Bottom y Middle: un solo click
 // ordena la tabla completa (la fila entera se mueve junto, no solo la celda)
 // de mayor a menor por esa columna; un segundo click invierte a menor a mayor;
 // un tercer click vuelve al orden original. Solo puede haber una columna
@@ -355,14 +355,14 @@ export default function KamDashboard({ data }) {
   const [hoverPos, setHoverPos] = useState(null)
   const hoverHideTimeout = useRef(null)
 
-  // Ordenamiento por columna de las tablas de Top/Bottom y Churn — uno solo
+  // Ordenamiento por columna de las tablas de Top/Bottom y Middle — uno solo
   // activo a la vez por tabla, ver SortableTh
   const [topSort, setTopSort] = useState(null)
   const [bottomSort, setBottomSort] = useState(null)
-  const [churnSort, setChurnSort] = useState(null)
+  const [middleSort, setMiddleSort] = useState(null)
   const handleTopSort = useCallback(makeSortHandler(setTopSort), [])
   const handleBottomSort = useCallback(makeSortHandler(setBottomSort), [])
-  const handleChurnSort = useCallback(makeSortHandler(setChurnSort), [])
+  const handleMiddleSort = useCallback(makeSortHandler(setMiddleSort), [])
 
   const { kams, weeklyData } = data
   const kamActive = kams?.[activeKam]
@@ -430,6 +430,53 @@ export default function KamDashboard({ data }) {
     if (!brandMdStatus) return null
     return calcBrandsMdGoal(brandMdStatus.brands_md_result, brandMdStatus.brands_md_target, mdGoalPct)
   }, [brandMdStatus, mdGoalPct])
+
+  // Ranking de Brands with Markdown de TODOS los KAMs (no solo el activo), para
+  // el bloque fijo de arriba. A diferencia de brandMdStatus (que trae solo el
+  // KAM activo), acá se traen todos de una — se recarga cada vez que cambia el
+  // array de KAMs (ej. en cada refetch periódico de 60s de app/page.js), así el
+  // ranking refleja la última importación de Excel sin depender de qué KAM o
+  // pestaña esté mirando el usuario.
+  const [kamsMdStatusMap, setKamsMdStatusMap] = useState({})
+
+  useEffect(() => {
+    if (!kams || kams.length === 0) return
+    let cancelled = false
+    supabase
+      .from('brand_markdown_status')
+      .select('kam_id, brands_md_result, brands_md_target, updated_at')
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) { console.error('❌ Error cargando ranking de Brands with Markdown:', error); return }
+        const map = {}
+        data.forEach((row) => { map[row.kam_id] = row })
+        setKamsMdStatusMap(map)
+      })
+    return () => { cancelled = true }
+  }, [kams])
+
+  // Ranking ordenado de mayor a menor % de Brands with Markdown cumplido.
+  // Solo entran los KAMs que ya tienen datos cargados (result/target) —
+  // el resto todavía no importó el Excel de comisiones y no tiene con qué comparar.
+  const kamsRanking = useMemo(() => {
+    if (!kams) return []
+    return kams
+      .map((kam) => {
+        const status = kamsMdStatusMap[kam.id]
+        if (!status) return null
+        const calc = calcBrandsMdGoal(status.brands_md_result, status.brands_md_target, 100)
+        return {
+          id: kam.id,
+          nombre: kam.nombre,
+          result: status.brands_md_result,
+          target: status.brands_md_target,
+          achievedPct: calc.achievedPct,
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.achievedPct - a.achievedPct)
+      .map((k, idx) => ({ ...k, rank: idx + 1 }))
+  }, [kams, kamsMdStatusMap])
 
   // Importar Excel de Brands with Markdown: lee el archivo, identifica las
   // columnas de Comercial (email) / Brands w/MD Result / Brands w/MD Target,
@@ -700,17 +747,17 @@ export default function KamDashboard({ data }) {
   }, [brandsWowMarkdown])
 
   // Vistas ordenadas por columna (ver SortableTh) — el orden de estas es el
-  // que se renderiza en la tabla; topBrands/bottomBrands/churnBrands siguen
+  // que se renderiza en la tabla; topBrands/bottomBrands/middleBrands siguen
   // siendo el orden "natural" (por variación de markdown / por orders)
   const sortedTopBrands = useMemo(() => sortBrandRows(topBrands, topSort), [topBrands, topSort])
   const sortedBottomBrands = useMemo(() => sortBrandRows(bottomBrands, bottomSort), [bottomBrands, bottomSort])
 
-  // Churn: el resto de la cartera de la última semana — todo lo que NO entra
+  // Middle: el resto de la cartera de la última semana — todo lo que NO entra
   // en el Top 10 ni en el Bottom 10 de variación de markdown. Incluye también
   // a los aliados que ni siquiera tienen markdown en LW para comparar (por
   // eso no aparecen en brandsWowMarkdown/top/bottom), usando la misma
   // ventana de 8 semanas del resto del dashboard, no una ventana reducida.
-  const churnBrands = useMemo(() => {
+  const middleBrands = useMemo(() => {
     if (!latestWeek) return []
 
     const prevRows = prevWeek ? kamBrandRows.filter(b => b.semana_fecha?.trim() === prevWeek.semana) : []
@@ -741,7 +788,7 @@ export default function KamDashboard({ data }) {
       .sort((a, b) => b.orders - a.orders)
   }, [latestWeek, latestWeekBrands, kamBrandRows, prevWeek, topBrands, bottomBrands])
 
-  const sortedChurnBrands = useMemo(() => sortBrandRows(churnBrands, churnSort), [churnBrands, churnSort])
+  const sortedMiddleBrands = useMemo(() => sortBrandRows(middleBrands, middleSort), [middleBrands, middleSort])
 
   // Historial de las últimas 8 semanas de la brand sobre la que está el cursor
   const hoverBrandHistory = useMemo(() => {
@@ -791,6 +838,42 @@ export default function KamDashboard({ data }) {
 
   return (
     <div className="w-full">
+      {/* RANKING FIJO: posición de cada KAM según % de Brands with Markdown
+          cumplido, no depende del KAM ni de la pestaña que se esté mirando —
+          se recalcula en cada actualización de datos (import de Excel / refetch
+          periódico) y queda pegado arriba de todo, incluso al hacer scroll. */}
+      {kamsRanking.length > 0 && (
+        <div className="ranking-card fade-in">
+          <div className="ranking-header">
+            <div className="ranking-title">🏅 Ranking KAMs — Brands with Markdown</div>
+            <div className="ranking-subtitle">% del target de brands con markdown activo cumplido por cada KAM, actualizado con cada importación del Excel de comisiones.</div>
+          </div>
+          <div className="ranking-list">
+            {kamsRanking.map((k) => {
+              const { color, label } = mdStatusFor(k.achievedPct)
+              const kamIdx = kams.findIndex((kam) => kam.id === k.id)
+              const isActive = kamActive?.id === k.id
+              return (
+                <button
+                  key={k.id}
+                  type="button"
+                  className={`ranking-row ${isActive ? 'active' : ''}`}
+                  onClick={() => kamIdx !== -1 && setActiveKam(kamIdx)}
+                  title={label}
+                >
+                  <span className="ranking-position">#{k.rank}</span>
+                  <span className="ranking-info">
+                    <span className="ranking-name">{k.nombre}</span>
+                    <span className="ranking-target">{k.result} / {k.target} brands</span>
+                  </span>
+                  <span className="ranking-pct" style={{ color }}>{k.achievedPct.toFixed(1)}%</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* KAM TABS */}
       <div className="tabs-wrapper fade-in">
         <div className="tabs">
@@ -1053,7 +1136,7 @@ export default function KamDashboard({ data }) {
         </div>
       )}
 
-      {/* SUB-TABS: Top and Bottom / Churn / Accionables */}
+      {/* SUB-TABS: Top and Bottom / Middle / Accionables */}
       <div className="subtabs-wrapper fade-in">
         <button
           className={`subtab ${activeSubTab === 'topbottom' ? 'active' : ''}`}
@@ -1062,8 +1145,8 @@ export default function KamDashboard({ data }) {
           🏆 Top and Bottom
         </button>
         <button
-          className={`subtab ${activeSubTab === 'churn' ? 'active' : ''}`}
-          onClick={() => setActiveSubTab('churn')}
+          className={`subtab ${activeSubTab === 'middle' ? 'active' : ''}`}
+          onClick={() => setActiveSubTab('middle')}
         >
           ⚠️ Middle
         </button>
@@ -1198,8 +1281,8 @@ export default function KamDashboard({ data }) {
         </div>
       )}
 
-      {/* CHURN - ALIADOS SIN NADA DE MARKDOWN EN LAS ÚLTIMAS SEMANAS */}
-      {activeSubTab === 'churn' && (
+      {/* MIDDLE - ALIADOS SIN NADA DE MARKDOWN EN LAS ÚLTIMAS SEMANAS */}
+      {activeSubTab === 'middle' && (
         <>
           <div className="trend-description fade-in">
             <span className="trend-description-icon">⚠️</span>
@@ -1211,7 +1294,7 @@ export default function KamDashboard({ data }) {
             </div>
           </div>
 
-          {churnBrands.length > 0 ? (
+          {middleBrands.length > 0 ? (
             <div className="table-card compact fade-in">
               <div className="table-title">⚠️ Resto de la Cartera (fuera del Top y Bottom 10)</div>
               <div className="table-container">
@@ -1221,18 +1304,18 @@ export default function KamDashboard({ data }) {
                       <th>Estado</th>
                       <th>Brand</th>
                       <th>Categoría</th>
-                      <SortableTh label="Markdown" sortKey="markdown" sort={churnSort} onSort={handleChurnSort} />
-                      <SortableTh label="Δ MD vs LW" sortKey="markdownDiffPct" sort={churnSort} onSort={handleChurnSort} />
-                      <SortableTh label="Orders LW" sortKey="ordersLW" sort={churnSort} onSort={handleChurnSort} />
-                      <SortableTh label="Orders" sortKey="orders" sort={churnSort} onSort={handleChurnSort} />
-                      <SortableTh label="Δ Orders vs LW" sortKey="ordersDiff" sort={churnSort} onSort={handleChurnSort} />
-                      <SortableTh label="Tráfico LW" sortKey="traficoLW" sort={churnSort} onSort={handleChurnSort} />
-                      <SortableTh label="Tráfico" sortKey="trafico" sort={churnSort} onSort={handleChurnSort} />
-                      <SortableTh label="Δ Tráfico vs LW" sortKey="traficoDiff" sort={churnSort} onSort={handleChurnSort} />
+                      <SortableTh label="Markdown" sortKey="markdown" sort={middleSort} onSort={handleMiddleSort} />
+                      <SortableTh label="Δ MD vs LW" sortKey="markdownDiffPct" sort={middleSort} onSort={handleMiddleSort} />
+                      <SortableTh label="Orders LW" sortKey="ordersLW" sort={middleSort} onSort={handleMiddleSort} />
+                      <SortableTh label="Orders" sortKey="orders" sort={middleSort} onSort={handleMiddleSort} />
+                      <SortableTh label="Δ Orders vs LW" sortKey="ordersDiff" sort={middleSort} onSort={handleMiddleSort} />
+                      <SortableTh label="Tráfico LW" sortKey="traficoLW" sort={middleSort} onSort={handleMiddleSort} />
+                      <SortableTh label="Tráfico" sortKey="trafico" sort={middleSort} onSort={handleMiddleSort} />
+                      <SortableTh label="Δ Tráfico vs LW" sortKey="traficoDiff" sort={middleSort} onSort={handleMiddleSort} />
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedChurnBrands.map((brand, idx) => (
+                    {sortedMiddleBrands.map((brand, idx) => (
                       <tr
                         key={idx}
                         onMouseEnter={(e) => showBrandHover(brand, e)}
@@ -1269,7 +1352,7 @@ export default function KamDashboard({ data }) {
         </>
       )}
 
-      {/* POSIBLES CASOS - visible en Top and Bottom y en Churn, se oculta solo en Accionables */}
+      {/* POSIBLES CASOS - visible en Top and Bottom y en Middle, se oculta solo en Accionables */}
       {activeSubTab !== 'accionables' && (topBrands.length > 0 || bottomBrands.length > 0) && (
         <div className="table-card compact fade-in">
           <div className="table-title">🧩 Posibles Casos</div>
