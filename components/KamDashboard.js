@@ -842,29 +842,62 @@ export default function KamDashboard({ data }) {
           no depende del KAM ni de la pestaña que se esté mirando — se recalcula
           en cada actualización de datos (import de Excel / refetch periódico).
           Va arriba de todo, pero NO queda pegado (sticky) al scrollear. */}
-      {kamsRanking.length > 0 && (
+      {kams?.length > 0 && (
         <div className="ranking-card fade-in">
-          <div className="ranking-title">🏅 Rankings Markdown</div>
-          <div className="ranking-list">
-            {kamsRanking.map((k) => {
-              const { color, label } = mdStatusFor(k.achievedPct)
-              const kamIdx = kams.findIndex((kam) => kam.id === k.id)
-              const isActive = kamActive?.id === k.id
-              return (
-                <button
-                  key={k.id}
-                  type="button"
-                  className={`ranking-row ${isActive ? 'active' : ''}`}
-                  onClick={() => kamIdx !== -1 && setActiveKam(kamIdx)}
-                  title={label}
-                >
-                  <span className="ranking-position">#{k.rank}</span>
-                  <span className="ranking-name">{k.nombre}</span>
-                  <span className="ranking-pct" style={{ color }}>{k.achievedPct.toFixed(1)}%</span>
-                </button>
-              )
-            })}
+          <div className="table-header-row">
+            <div className="ranking-title">🏅 Rankings Markdown</div>
+            {/* Importar Excel vive acá (y no en Brands with Markdown) porque la
+                importación cruza el archivo entero contra todos los KAMs de una,
+                no es una acción por KAM individual. */}
+            <div className="md-import">
+              <input
+                ref={mdImportInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleMdImportFile}
+                style={{ display: 'none' }}
+              />
+              <button
+                type="button"
+                className="md-import-btn"
+                onClick={handleMdImportClick}
+                disabled={mdImportStatus?.type === 'loading'}
+              >
+                📥 Importar Excel
+              </button>
+            </div>
           </div>
+
+          {mdImportStatus && (
+            <div className={`md-import-status md-import-status-${mdImportStatus.type}`}>
+              {mdImportStatus.message}
+            </div>
+          )}
+
+          {kamsRanking.length > 0 ? (
+            <div className="ranking-list">
+              {kamsRanking.map((k) => {
+                const { color, label } = mdStatusFor(k.achievedPct)
+                const kamIdx = kams.findIndex((kam) => kam.id === k.id)
+                const isActive = kamActive?.id === k.id
+                return (
+                  <button
+                    key={k.id}
+                    type="button"
+                    className={`ranking-row ${isActive ? 'active' : ''}`}
+                    onClick={() => kamIdx !== -1 && setActiveKam(kamIdx)}
+                    title={label}
+                  >
+                    <span className="ranking-position">#{k.rank}</span>
+                    <span className="ranking-name">{k.nombre}</span>
+                    <span className="ranking-pct" style={{ color }}>{k.achievedPct.toFixed(1)}%</span>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="no-data">Todavía no hay datos de Brands with Markdown importados — usá "Importar Excel" para cargarlos.</div>
+          )}
         </div>
       )}
 
@@ -895,35 +928,10 @@ export default function KamDashboard({ data }) {
       {/* BRANDS WITH MARKDOWN: Brands w/MD Result/Target del KAM activo, contra
           un umbral seleccionable, con minuta */}
       <div className="table-card fade-in">
-        <div className="table-header-row">
-          <div className="table-title">Brands with Markdown</div>
-          <div className="md-import">
-            <input
-              ref={mdImportInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleMdImportFile}
-              style={{ display: 'none' }}
-            />
-            <button
-              type="button"
-              className="md-import-btn"
-              onClick={handleMdImportClick}
-              disabled={mdImportStatus?.type === 'loading'}
-            >
-              📥 Importar Excel
-            </button>
-          </div>
-        </div>
+        <div className="table-title">Brands with Markdown</div>
         <p className="table-subtitle">
-          Compara, para este KAM, cuántas brands de su cartera tienen markdown activo (Brands In) contra la cantidad objetivo (Markdown Target), y qué % de ese objetivo ya cumplió. Elegí un umbral para ver cuántas brands le faltan — o le sobran — para llegar a ese nivel. Actualizá los números con el botón "Importar Excel": lee el archivo de comisiones, identifica las columnas de Comercial, Brands w/MD Result y Brands w/MD Target, y cruza cada fila con el KAM correspondiente por email.
+          Compara, para este KAM, cuántas brands de su cartera tienen markdown activo (Brands In) contra la cantidad objetivo (Markdown Target), y qué % de ese objetivo ya cumplió. Elegí un umbral para ver cuántas brands le faltan — o le sobran — para llegar a ese nivel. Actualizá los números con el botón "Importar Excel" del ranking de arriba: lee el archivo de comisiones, identifica las columnas de Comercial, Brands w/MD Result y Brands w/MD Target, y cruza cada fila con el KAM correspondiente por email.
         </p>
-
-        {mdImportStatus && (
-          <div className={`md-import-status md-import-status-${mdImportStatus.type}`}>
-            {mdImportStatus.message}
-          </div>
-        )}
 
         {!brandMdStatus ? (
           <div className="no-data">Todavía no hay datos de Brands with Markdown cargados para este KAM.</div>
