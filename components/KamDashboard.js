@@ -838,16 +838,13 @@ export default function KamDashboard({ data }) {
 
   return (
     <div className="w-full">
-      {/* RANKING FIJO: posición de cada KAM según % de Brands with Markdown
-          cumplido, no depende del KAM ni de la pestaña que se esté mirando —
-          se recalcula en cada actualización de datos (import de Excel / refetch
-          periódico) y queda pegado arriba de todo, incluso al hacer scroll. */}
+      {/* RANKING: posición de cada KAM según % de Brands with Markdown cumplido,
+          no depende del KAM ni de la pestaña que se esté mirando — se recalcula
+          en cada actualización de datos (import de Excel / refetch periódico).
+          Va arriba de todo, pero NO queda pegado (sticky) al scrollear. */}
       {kamsRanking.length > 0 && (
         <div className="ranking-card fade-in">
-          <div className="ranking-header">
-            <div className="ranking-title">🏅 Ranking KAMs — Brands with Markdown</div>
-            <div className="ranking-subtitle">% del target de brands con markdown activo cumplido por cada KAM, actualizado con cada importación del Excel de comisiones.</div>
-          </div>
+          <div className="ranking-title">🏅 Rankings Markdown</div>
           <div className="ranking-list">
             {kamsRanking.map((k) => {
               const { color, label } = mdStatusFor(k.achievedPct)
