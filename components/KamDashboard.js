@@ -3,6 +3,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { BarChart, Bar, XAxis, YAxis, LabelList, ResponsiveContainer } from 'recharts'
 import { Poppins } from 'next/font/google'
+import { toPng } from 'html-to-image'
 import AccionablesPanel from '@/components/AccionablesPanel'
 import { supabase } from '@/lib/supabase'
 
@@ -836,6 +837,50 @@ export default function KamDashboard({ data }) {
     }
   }, [kamActive, latestWeekBrands])
 
+  // Resumen Ejecutivo: junta todo lo que ya se calculó arriba (órdenes/markdown/
+  // tráfico WoW, Brands with Markdown, top/bottom 3) en un solo objeto para
+  // renderizar la tarjeta exportable. No agrega ningún fetch nuevo — es puramente
+  // una recombinación de datos que el resto del dashboard ya tiene calculados.
+  const resumenEjecutivo = useMemo(() => {
+    if (!activeKamInfo || !latestWeek) return null
+    return {
+      kam: activeKamInfo,
+      semana: latestWeek.semana,
+      orders: { value: latestWeek.orders, diff: lastWeekVsPrev },
+      markdown: { value: latestWeek.markdown, diff: lastMdVsPrev },
+      trafico: { value: latestWeek.trafico, diff: lastTrafficVsPrev },
+      brandMd: brandMdStatus && brandMdCalc ? { status: brandMdStatus, calc: brandMdCalc } : null,
+      topSubas: topBrands.slice(0, 3),
+      topBajas: bottomBrands.slice(0, 3),
+    }
+  }, [activeKamInfo, latestWeek, lastWeekVsPrev, lastMdVsPrev, lastTrafficVsPrev, brandMdStatus, brandMdCalc, topBrands, bottomBrands])
+
+  // Exportar Resumen Ejecutivo: abre un modal con la tarjeta y la convierte a
+  // PNG con html-to-image (recorta el DOM del ref a una imagen). El botón "Abrir
+  // en Canva" queda documentado pero deshabilitado hasta tener credenciales de
+  // la Canva Developer App (ver nota en el modal) — no se puede autofillear un
+  // diseño de Canva sin una integración OAuth registrada del lado de Canva.
+  const [showResumenModal, setShowResumenModal] = useState(false)
+  const [resumenExportStatus, setResumenExportStatus] = useState(null)
+  const resumenCardRef = useRef(null)
+
+  const handleDownloadResumenPng = useCallback(async () => {
+    if (!resumenCardRef.current) return
+    setResumenExportStatus('loading')
+    try {
+      const dataUrl = await toPng(resumenCardRef.current, { pixelRatio: 2, backgroundColor: '#1E1E1E' })
+      const link = document.createElement('a')
+      const fileKam = (kamActive?.nombre || 'kam').toLowerCase().replace(/\s+/g, '-')
+      link.download = `resumen-ejecutivo-${fileKam}-${latestWeek?.semana || ''}.png`.replace(/\s+/g, '')
+      link.href = dataUrl
+      link.click()
+      setResumenExportStatus(null)
+    } catch (err) {
+      console.error('❌ Error exportando resumen a PNG:', err)
+      setResumenExportStatus('error')
+    }
+  }, [kamActive, latestWeek])
+
   return (
     <div className="w-full">
       {/* RANKING: posición de cada KAM según % de Brands with Markdown cumplido,
@@ -922,6 +967,15 @@ export default function KamDashboard({ data }) {
           <div className="kam-info-text">
             <strong>{activeKamInfo.nombre}</strong> - Kam de {activeKamInfo.region} - {activeKamInfo.brandCount} brands
           </div>
+          {resumenEjecutivo && (
+            <button
+              type="button"
+              className="export-resumen-btn"
+              onClick={() => setShowResumenModal(true)}
+            >
+              📤 Exportar Resumen
+            </button>
+          )}
         </div>
       )}
 
@@ -1451,6 +1505,110 @@ export default function KamDashboard({ data }) {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RESUMEN EJECUTIVO EXPORTABLE — la tarjeta capturada por
+          html-to-image vive en resumenCardRef; "Abrir en Canva" queda
+          deshabilitado hasta registrar una Canva Developer App (ver nota
+          en el botón) porque requiere OAuth por fuera de esta app. */}
+      {showResumenModal && resumenEjecutivo && (
+        <div className="resumen-modal-overlay" onClick={() => setShowResumenModal(false)}>
+          <div className="resumen-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="resumen-modal-header">
+              <div className="resumen-modal-title">📤 Exportar Resumen Ejecutivo</div>
+              <button type="button" className="resumen-modal-close" onClick={() => setShowResumenModal(false)}>✕</button>
+            </div>
+
+            <div className="resumen-card" ref={resumenCardRef}>
+              <div className={`resumen-card-header ${poppins.className}`}>
+                <div className="resumen-card-brand">📊 Rappi · Resumen Semanal</div>
+                <div className="resumen-card-kam">{resumenEjecutivo.kam.nombre}</div>
+                <div className="resumen-card-meta">
+                  Kam de {resumenEjecutivo.kam.region} · {resumenEjecutivo.kam.brandCount} brands · Semana del {resumenEjecutivo.semana}
+                </div>
+              </div>
+
+              <div className="resumen-stats-row">
+                <div className="resumen-stat">
+                  <div className="resumen-stat-label">📦 Órdenes</div>
+                  <div className="resumen-stat-value">{resumenEjecutivo.orders.value.toLocaleString()}</div>
+                  {resumenEjecutivo.orders.diff && <DiffCell value={resumenEjecutivo.orders.diff.pct} decimals={1} suffix="%" />}
+                </div>
+                <div className="resumen-stat">
+                  <div className="resumen-stat-label">📊 Markdown</div>
+                  <div className="resumen-stat-value">{resumenEjecutivo.markdown.value.toFixed(1)}%</div>
+                  {resumenEjecutivo.markdown.diff && <DiffCell value={resumenEjecutivo.markdown.diff.pct} decimals={1} suffix="%" />}
+                </div>
+                <div className="resumen-stat">
+                  <div className="resumen-stat-label">📶 Tráfico</div>
+                  <div className="resumen-stat-value">{resumenEjecutivo.trafico.value.toLocaleString()}</div>
+                  {resumenEjecutivo.trafico.diff && <DiffCell value={resumenEjecutivo.trafico.diff.pct} decimals={1} suffix="%" />}
+                </div>
+              </div>
+
+              {resumenEjecutivo.brandMd && (
+                <div className="resumen-md-row">
+                  <div className="resumen-md-label">🎯 Brands with Markdown</div>
+                  <div className="resumen-md-value">
+                    {resumenEjecutivo.brandMd.status.brands_md_result} / {resumenEjecutivo.brandMd.status.brands_md_target}
+                    <span style={{ color: mdStatusFor(resumenEjecutivo.brandMd.calc.achievedPct).color, fontWeight: 700 }}>
+                      {' '}({resumenEjecutivo.brandMd.calc.achievedPct.toFixed(1)}% · {mdStatusFor(resumenEjecutivo.brandMd.calc.achievedPct).label})
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {(resumenEjecutivo.topSubas.length > 0 || resumenEjecutivo.topBajas.length > 0) && (
+                <div className="resumen-brands-row">
+                  <div className="resumen-brands-col">
+                    <div className="resumen-brands-title">🔼 Mayor suba de MD</div>
+                    {resumenEjecutivo.topSubas.map((b) => (
+                      <div key={b.brand_id || b.brand_name} className="resumen-brand-line">
+                        <span>{b.brand_name}</span>
+                        <span className="resumen-brand-pct up">+{b.markdownDiffPct.toFixed(1)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="resumen-brands-col">
+                    <div className="resumen-brands-title">🔽 Mayor baja de MD</div>
+                    {resumenEjecutivo.topBajas.map((b) => (
+                      <div key={b.brand_id || b.brand_name} className="resumen-brand-line">
+                        <span>{b.brand_name}</span>
+                        <span className="resumen-brand-pct down">{b.markdownDiffPct.toFixed(1)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="resumen-card-footer">
+                Generado el {new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}
+              </div>
+            </div>
+
+            <div className="resumen-modal-actions">
+              <button
+                type="button"
+                className="resumen-download-btn"
+                onClick={handleDownloadResumenPng}
+                disabled={resumenExportStatus === 'loading'}
+              >
+                {resumenExportStatus === 'loading' ? 'Generando...' : '⬇️ Descargar PNG'}
+              </button>
+              <button
+                type="button"
+                className="resumen-canva-btn"
+                disabled
+                title="Próximamente: requiere conectar una app de Canva Developer (Client ID/Secret) para importar el diseño automáticamente a tu cuenta de Canva."
+              >
+                🎨 Abrir en Canva (próximamente)
+              </button>
+            </div>
+            {resumenExportStatus === 'error' && (
+              <div className="resumen-export-error">No se pudo generar la imagen. Probá de nuevo.</div>
+            )}
           </div>
         </div>
       )}

@@ -631,6 +631,9 @@ body {
 .kam-info-card {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .kam-info-text {
@@ -641,6 +644,266 @@ body {
 
 .kam-info-text strong {
   color: var(--primary);
+}
+
+.export-resumen-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 2px solid var(--border-gray);
+  background: transparent;
+  color: var(--text-light);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.export-resumen-btn:hover {
+  border-color: var(--primary);
+  color: var(--text-dark);
+}
+
+/* Modal de Resumen Ejecutivo: overlay oscuro + tarjeta capturable por
+   html-to-image (resumenCardRef) para exportar a PNG. */
+.resumen-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.resumen-modal {
+  background: #1A1A1A;
+  border-radius: 16px;
+  border: 1px solid var(--border-gray);
+  padding: 20px;
+  max-width: 480px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.resumen-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.resumen-modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.resumen-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text-light);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.resumen-modal-close:hover {
+  color: var(--text-dark);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* La tarjeta en sí: esto es exactamente lo que se exporta a PNG, así que
+   tiene su propio fondo/padding sólido (no depende del contenedor del modal). */
+.resumen-card {
+  background: linear-gradient(160deg, #1E1E1E 0%, #2A2A2A 100%);
+  border: 1px solid var(--primary);
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.resumen-card-header {
+  text-align: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-gray);
+}
+
+.resumen-card-brand {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.resumen-card-kam {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-dark);
+}
+
+.resumen-card-meta {
+  font-size: 11px;
+  color: var(--text-light);
+  margin-top: 4px;
+}
+
+.resumen-stats-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.resumen-stat {
+  flex: 1;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-gray);
+  border-radius: 10px;
+  padding: 12px 8px;
+}
+
+.resumen-stat-label {
+  font-size: 10px;
+  color: var(--text-light);
+  margin-bottom: 4px;
+}
+
+.resumen-stat-value {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-dark);
+  margin-bottom: 2px;
+}
+
+.resumen-md-row {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-gray);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 18px;
+  text-align: center;
+}
+
+.resumen-md-label {
+  font-size: 11px;
+  color: var(--text-light);
+  margin-bottom: 4px;
+}
+
+.resumen-md-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.resumen-brands-row {
+  display: flex;
+  gap: 14px;
+}
+
+.resumen-brands-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.resumen-brands-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-light);
+  margin-bottom: 8px;
+}
+
+.resumen-brand-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dark);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-gray);
+}
+
+.resumen-brand-line span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resumen-brand-pct {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.resumen-brand-pct.up {
+  color: var(--success);
+}
+
+.resumen-brand-pct.down {
+  color: var(--danger);
+}
+
+.resumen-card-footer {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-light);
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-gray);
+}
+
+.resumen-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.resumen-download-btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(90deg, #FFC107 0%, #FFA000 100%);
+  color: #0D0D0D;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.resumen-download-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.resumen-download-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.resumen-canva-btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 10px;
+  border: 2px solid var(--border-gray);
+  background: transparent;
+  color: var(--text-light);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: not-allowed;
+}
+
+.resumen-export-error {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--danger);
+  text-align: center;
 }
 
 /* Filter Group */
