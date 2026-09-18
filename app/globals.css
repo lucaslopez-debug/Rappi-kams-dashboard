@@ -593,21 +593,18 @@ body {
 
 .ranking-list {
   display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 4px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .ranking-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex: 0 0 auto;
-  min-width: 190px;
+  gap: 8px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-gray);
   border-radius: 10px;
-  padding: 8px 14px;
+  padding: 7px 12px;
   cursor: pointer;
   font-family: inherit;
   transition: all 0.2s ease;
@@ -624,18 +621,10 @@ body {
 }
 
 .ranking-position {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
   color: var(--primary);
-  min-width: 24px;
-  text-align: left;
-}
-
-.ranking-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  text-align: left;
+  white-space: nowrap;
 }
 
 .ranking-name {
@@ -645,15 +634,8 @@ body {
   white-space: nowrap;
 }
 
-.ranking-target {
-  font-size: 10px;
-  color: var(--text-light);
-  white-space: nowrap;
-}
-
 .ranking-pct {
-  margin-left: auto;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 800;
   white-space: nowrap;
 }

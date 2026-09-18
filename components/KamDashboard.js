@@ -862,10 +862,7 @@ export default function KamDashboard({ data }) {
                   title={label}
                 >
                   <span className="ranking-position">#{k.rank}</span>
-                  <span className="ranking-info">
-                    <span className="ranking-name">{k.nombre}</span>
-                    <span className="ranking-target">{k.result} / {k.target} brands</span>
-                  </span>
+                  <span className="ranking-name">{k.nombre}</span>
                   <span className="ranking-pct" style={{ color }}>{k.achievedPct.toFixed(1)}%</span>
                 </button>
               )
