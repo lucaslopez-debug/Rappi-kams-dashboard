@@ -424,6 +424,14 @@ body {
   margin-bottom: 0;
 }
 
+/* Importar Excel + Importar Compensation apilados, alineados a la derecha */
+.md-import {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 /* Color del logo de Rappi (var(--secondary)) para diferenciar las acciones
    de Importar/Exportar del resto de los botones (que usan el amarillo del
    dashboard) — así se distinguen de un vistazo. */
@@ -946,6 +954,27 @@ body {
   cursor: pointer;
   white-space: nowrap;
   max-width: 130px;
+}
+
+/* Accionar Urgente: estado del aliado según su % de MD Archie Final — mismo
+   corte de 80% que mdStatusFor usa en el resto de la app ("mínimo cumplido"). */
+.urgent-status {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.urgent-status.below {
+  color: #FFC107;
+  background: rgba(255, 193, 7, 0.14);
+}
+
+.urgent-status.edge {
+  color: #AED581;
+  background: rgba(174, 213, 129, 0.14);
 }
 
 .status-select:focus {

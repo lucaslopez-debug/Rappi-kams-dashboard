@@ -203,6 +203,37 @@ function findMdImportColumnIndex(headerRow, aliases) {
   return -1
 }
 
+// Importación de Excel para Accionar Urgente ("Compensation"): a diferencia de
+// Brands with Markdown (un solo % agregado por KAM), este archivo trae una fila
+// POR ALIADO con su % de "MD archie final" — se cruza por KAM (mismo email que
+// el resto de los imports) y por nombre de aliado.
+const COMPENSATION_IMPORT_COLUMN_ALIASES = {
+  email: ['comercial', 'email', 'mail', 'kam'],
+  brand: ['aliado', 'brand', 'marca', 'nombre comercial', 'restaurante', 'partner'],
+  mdArchieFinal: ['md archie final', 'md archie', 'archie final', '% md archie final'],
+}
+
+// Umbral de "Accionar Urgente": aliados con % de MD Archie Final entre 70 y 85 —
+// los que todavía no llegan al mínimo de target (70-80%) y los que ya lo cruzaron
+// pero están al borde, sin margen (80-85%). Ver mdStatusFor: 80% es el mismo
+// corte de "mínimo cumplido" que usa el resto de la app.
+const URGENT_MD_MIN = 70
+const URGENT_MD_MAX = 85
+const URGENT_MD_TARGET_CUT = 80
+
+// Acepta el % como "78%", "78" o "0.78" (fracción) — normaliza todo a puntos
+// porcentuales (78). Si el texto trae el símbolo "%" explícito, el número ya
+// está en puntos porcentuales y no se reescala.
+function parsePercentCell(raw) {
+  if (raw === null || raw === undefined || raw === '') return null
+  const isPercentString = typeof raw === 'string' && raw.includes('%')
+  const cleaned = String(raw).replace('%', '').replace(',', '.').trim()
+  const num = Number(cleaned)
+  if (!Number.isFinite(num)) return null
+  if (isPercentString) return num
+  return Math.abs(num) <= 1 ? num * 100 : num
+}
+
 // Umbrales seleccionables para "cuántas brands faltan" en Brands with Markdown
 const MD_TARGET_GOAL_OPTIONS = [80, 90, 100, 110]
 
@@ -432,6 +463,34 @@ export default function KamDashboard({ data }) {
     return calcBrandsMdGoal(brandMdStatus.brands_md_result, brandMdStatus.brands_md_target, mdGoalPct)
   }, [brandMdStatus, mdGoalPct])
 
+  // Accionar Urgente: % de "MD Archie Final" por aliado del KAM activo (cargado
+  // desde el import de Compensation, tabla aparte porque es un dato por aliado,
+  // no un agregado por KAM como brandMdStatus).
+  const [compensationRows, setCompensationRows] = useState([])
+
+  useEffect(() => {
+    if (!kamActive) return
+    let cancelled = false
+    supabase
+      .from('brand_compensation_status')
+      .select('brand_key, brand_name, md_archie_final_pct, updated_at')
+      .eq('kam_id', kamActive.id)
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) { console.error('❌ Error cargando Compensation (MD Archie Final):', error); return }
+        setCompensationRows(data || [])
+      })
+    return () => { cancelled = true }
+  }, [kamActive])
+
+  // Aliados "urgentes": % de MD Archie Final entre 70 y 85 — ordenados de mayor
+  // a menor para que arriba queden los que están más cerca de asegurar el target.
+  const urgentBrands = useMemo(() => {
+    return compensationRows
+      .filter((r) => r.md_archie_final_pct !== null && r.md_archie_final_pct >= URGENT_MD_MIN && r.md_archie_final_pct <= URGENT_MD_MAX)
+      .sort((a, b) => b.md_archie_final_pct - a.md_archie_final_pct)
+  }, [compensationRows])
+
   // Ranking de Brands with Markdown de TODOS los KAMs (no solo el activo), para
   // el bloque fijo de arriba. A diferencia de brandMdStatus (que trae solo el
   // KAM activo), acá se traen todos de una — se recarga cada vez que cambia el
@@ -582,6 +641,99 @@ export default function KamDashboard({ data }) {
       setMdImportStatus({ type: 'success', message })
     } catch (err) {
       setMdImportStatus({ type: 'error', message: err.message || 'No se pudo importar el archivo.' })
+    }
+  }
+
+  // Importar Excel de Compensation (Accionar Urgente): a diferencia del import
+  // de Brands with Markdown (una fila por KAM), acá cada fila es un aliado —
+  // se cruza por email de KAM + nombre de aliado, y se guarda su % de "MD
+  // archie final" en brand_compensation_status.
+  const compensationImportInputRef = useRef(null)
+  const [compensationImportStatus, setCompensationImportStatus] = useState(null)
+
+  const handleCompensationImportClick = () => compensationImportInputRef.current?.click()
+
+  const handleCompensationImportFile = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setCompensationImportStatus({ type: 'loading', message: 'Leyendo archivo...' })
+
+    try {
+      const XLSX = await import('xlsx')
+      const buffer = await file.arrayBuffer()
+      const workbook = XLSX.read(buffer, { type: 'array' })
+      const sheet = workbook.Sheets[workbook.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null })
+
+      if (!rows.length) throw new Error('El archivo está vacío.')
+
+      const headerRow = rows[0]
+      const emailIdx = findMdImportColumnIndex(headerRow, COMPENSATION_IMPORT_COLUMN_ALIASES.email)
+      const brandIdx = findMdImportColumnIndex(headerRow, COMPENSATION_IMPORT_COLUMN_ALIASES.brand)
+      const mdArchieIdx = findMdImportColumnIndex(headerRow, COMPENSATION_IMPORT_COLUMN_ALIASES.mdArchieFinal)
+
+      if (emailIdx === -1 || brandIdx === -1 || mdArchieIdx === -1) {
+        throw new Error('No encontré las columnas "Comercial", "Aliado" y "MD archie final" en el archivo. Revisá los encabezados.')
+      }
+
+      const emailToKam = new Map((kams || []).map((k) => [k.email?.toLowerCase().trim(), k]))
+      const updatedAt = new Date().toISOString()
+      const updates = []
+      const unmatchedEmails = []
+
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i]
+        if (!row || row.every((cell) => cell === null || cell === '')) continue
+
+        const email = String(row[emailIdx] || '').toLowerCase().trim()
+        const brandName = String(row[brandIdx] || '').trim()
+        if (!email || !brandName) continue
+
+        const kam = emailToKam.get(email)
+        if (!kam) {
+          unmatchedEmails.push(email)
+          continue
+        }
+
+        const mdArchieFinalPct = parsePercentCell(row[mdArchieIdx])
+        if (mdArchieFinalPct === null) continue
+
+        updates.push({
+          kam_id: kam.id,
+          brand_key: brandName.toLowerCase(),
+          brand_name: brandName,
+          md_archie_final_pct: mdArchieFinalPct,
+          updated_at: updatedAt,
+        })
+      }
+
+      if (updates.length === 0) {
+        throw new Error('Ninguna fila coincidió con los emails de los KAMs actuales.')
+      }
+
+      const { error } = await supabase
+        .from('brand_compensation_status')
+        .upsert(updates, { onConflict: 'kam_id,brand_key' })
+
+      if (error) throw error
+
+      // Reflejar el cambio al toque si el KAM activo estaba entre los actualizados,
+      // sin esperar a un refetch
+      if (kamActive) {
+        const ownUpdates = updates.filter((u) => u.kam_id === kamActive.id)
+        if (ownUpdates.length > 0) setCompensationRows(ownUpdates)
+      }
+
+      const uniqueKams = new Set(updates.map((u) => u.kam_id)).size
+      let message = `✅ ${updates.length} aliado${updates.length === 1 ? '' : 's'} actualizado${updates.length === 1 ? '' : 's'} en ${uniqueKams} KAM${uniqueKams === 1 ? '' : 's'}.`
+      if (unmatchedEmails.length > 0) {
+        message += ` ${unmatchedEmails.length} fila${unmatchedEmails.length === 1 ? '' : 's'} no coincidió con ningún KAM.`
+      }
+      setCompensationImportStatus({ type: 'success', message })
+    } catch (err) {
+      setCompensationImportStatus({ type: 'error', message: err.message || 'No se pudo importar el archivo.' })
     }
   }
 
@@ -926,12 +1078,35 @@ export default function KamDashboard({ data }) {
               >
                 📥 Importar Excel
               </button>
+              {/* Importar Compensation alimenta Accionar Urgente: trae el % de
+                  "MD archie final" por aliado (no por KAM), cruzado igual que
+                  el resto por email de Comercial. */}
+              <input
+                ref={compensationImportInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleCompensationImportFile}
+                style={{ display: 'none' }}
+              />
+              <button
+                type="button"
+                className="md-import-btn"
+                onClick={handleCompensationImportClick}
+                disabled={compensationImportStatus?.type === 'loading'}
+              >
+                📥 Importar Compensation
+              </button>
             </div>
           </div>
 
           {mdImportStatus && (
             <div className={`md-import-status md-import-status-${mdImportStatus.type}`}>
               {mdImportStatus.message}
+            </div>
+          )}
+          {compensationImportStatus && (
+            <div className={`md-import-status md-import-status-${compensationImportStatus.type}`}>
+              {compensationImportStatus.message}
             </div>
           )}
 
@@ -1208,7 +1383,7 @@ export default function KamDashboard({ data }) {
         </div>
       )}
 
-      {/* SUB-TABS: Top and Bottom / Middle / Accionables */}
+      {/* SUB-TABS: Top and Bottom / Middle / Accionar Urgente / Accionables */}
       <div className="subtabs-wrapper fade-in">
         <button
           className={`subtab ${activeSubTab === 'topbottom' ? 'active' : ''}`}
@@ -1221,6 +1396,12 @@ export default function KamDashboard({ data }) {
           onClick={() => setActiveSubTab('middle')}
         >
           ⚠️ Middle
+        </button>
+        <button
+          className={`subtab ${activeSubTab === 'urgente' ? 'active' : ''}`}
+          onClick={() => setActiveSubTab('urgente')}
+        >
+          🚨 Accionar urgente
         </button>
         <button
           className={`subtab ${activeSubTab === 'accionables' ? 'active' : ''}`}
@@ -1424,8 +1605,65 @@ export default function KamDashboard({ data }) {
         </>
       )}
 
-      {/* POSIBLES CASOS - visible en Top and Bottom y en Middle, se oculta solo en Accionables */}
-      {activeSubTab !== 'accionables' && (topBrands.length > 0 || bottomBrands.length > 0) && (
+      {/* ACCIONAR URGENTE - aliados con % de MD Archie Final entre 70 y 85 (import
+          de Compensation, ver botón en el ranking de arriba) */}
+      {activeSubTab === 'urgente' && (
+        <>
+          <div className="trend-description fade-in">
+            <span className="trend-description-icon">🚨</span>
+            <div>
+              <div className="trend-description-title">Accionar Urgente — aliados cerca del target de MD Archie Final</div>
+              <div className="trend-description-text">
+                Este listado cruza el archivo de Compensation importado con la cartera de este KAM y muestra los aliados con un % de MD Archie Final entre 70% y 85%: los que todavía no llegan al target y están próximos a entrar (por debajo de 80%), y los que ya lo cruzaron pero quedaron al borde, sin margen (entre 80% y 85%). Son los que más urge trabajar para asegurar — o terminar de meter — el cumplimiento.
+              </div>
+            </div>
+          </div>
+
+          {compensationRows.length === 0 ? (
+            <div className="table-card compact fade-in no-data">
+              Todavía no se importó el archivo de Compensation para este KAM — usá "Importar Compensation" en el ranking de arriba.
+            </div>
+          ) : urgentBrands.length > 0 ? (
+            <div className="table-card compact fade-in">
+              <div className="table-title">🚨 Aliados entre 70% y 85% de MD Archie Final</div>
+              <div className="table-container">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Aliado</th>
+                      <th>% MD Archie Final</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {urgentBrands.map((brand) => {
+                      const atEdge = brand.md_archie_final_pct >= URGENT_MD_TARGET_CUT
+                      return (
+                        <tr key={brand.brand_key}>
+                          <td><strong>{brand.brand_name}</strong></td>
+                          <td>{brand.md_archie_final_pct.toFixed(1)}%</td>
+                          <td>
+                            <span className={`urgent-status ${atEdge ? 'edge' : 'below'}`}>
+                              {atEdge ? '✅ Al borde del target' : '🔸 Pronto a entrar en target'}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="table-card compact fade-in no-data">
+              Ningún aliado de esta cartera está entre 70% y 85% de MD Archie Final.
+            </div>
+          )}
+        </>
+      )}
+
+      {/* POSIBLES CASOS - visible en Top and Bottom y en Middle, se oculta en Accionar Urgente y Accionables */}
+      {(activeSubTab === 'topbottom' || activeSubTab === 'middle') && (topBrands.length > 0 || bottomBrands.length > 0) && (
         <div className="table-card compact fade-in">
           <div className="table-title">🧩 Posibles Casos</div>
           <p className="table-subtitle">
