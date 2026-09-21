@@ -554,10 +554,26 @@ export default function KamDashboard({ data }) {
 
       if (error) throw error
 
-      // Reflejar el cambio al toque si el KAM activo estaba entre los actualizados,
-      // sin esperar a un refetch
+      // Reflejar el cambio al toque, sin esperar a un refetch: si el KAM activo
+      // estaba entre los actualizados, pisa su brandMdStatus (tarjeta Brands with
+      // Markdown); y para TODOS los actualizados, pisa kamsMdStatusMap — de ahí
+      // sale kamsRanking, así que el ranking se reordena solo apenas termina el
+      // import, con los targets nuevos, sin depender del refetch de 60s.
       const ownUpdate = kamActive && updates.find((u) => u.kam_id === kamActive.id)
       if (ownUpdate) setBrandMdStatus(ownUpdate)
+
+      setKamsMdStatusMap((prev) => {
+        const next = { ...prev }
+        updates.forEach((u) => {
+          next[u.kam_id] = {
+            kam_id: u.kam_id,
+            brands_md_result: u.brands_md_result,
+            brands_md_target: u.brands_md_target,
+            updated_at: u.updated_at,
+          }
+        })
+        return next
+      })
 
       let message = `✅ ${updates.length} KAM${updates.length === 1 ? '' : 's'} actualizado${updates.length === 1 ? '' : 's'} correctamente.`
       if (unmatchedEmails.length > 0) {
