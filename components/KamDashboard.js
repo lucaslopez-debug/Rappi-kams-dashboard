@@ -204,13 +204,28 @@ function findMdImportColumnIndex(headerRow, aliases) {
 }
 
 // Importación de Excel para Accionar Urgente ("Compensation"): a diferencia de
-// Brands with Markdown (un solo % agregado por KAM), este archivo trae una fila
-// POR ALIADO con su % de "MD archie final" — se cruza por KAM (mismo email que
-// el resto de los imports) y por nombre de aliado.
+// Brands with Markdown (un solo % agregado por KAM), este archivo es un reporte
+// jerárquico tipo pivot exportado a plano: el email del KAM (columna "OWNER")
+// aparece UNA sola vez, en su fila de subtotal ("Bucket"="Total"), y todas las
+// filas de aliados que le siguen (PRIORITIZED/NON PRIORITIZED/ADJUSTED) tienen
+// esa celda vacía hasta el próximo KAM. Por eso el parseo hace "forward-fill"
+// del último email visto en vez de exigirlo en la misma fila que el aliado.
 const COMPENSATION_IMPORT_COLUMN_ALIASES = {
-  email: ['comercial', 'email', 'mail', 'kam'],
-  brand: ['aliado', 'brand', 'marca', 'nombre comercial', 'restaurante', 'partner'],
-  mdArchieFinal: ['md archie final', 'md archie', 'archie final', '% md archie final'],
+  email: ['comercial', 'email', 'mail', 'kam', 'owner'],
+  brand: ['aliado', 'brand', 'marca', 'nombre comercial', 'restaurante', 'partner', 'brand_id_name'],
+  mdArchieFinal: ['md archie final', 'md achie final', 'archie final', 'achie final', '% md archie final'],
+}
+
+// El aliado viene como "AR65117-Luigi Heladeria y Pasteleria" (ID país+código,
+// guion, nombre). Separa el ID (para usarlo como key estable entre imports,
+// a prueba de acentos/espacios) del nombre legible para mostrar.
+function parseBrandIdName(raw) {
+  if (raw === null || raw === undefined) return null
+  const trimmed = String(raw).trim()
+  if (!trimmed) return null
+  const match = trimmed.match(/^([A-Za-z]{2,4}\d+)-(.+)$/)
+  if (match) return { key: match[1].toUpperCase(), name: match[2].trim() }
+  return { key: trimmed.toLowerCase(), name: trimmed }
 }
 
 // Umbral de "Accionar Urgente": aliados con % de MD Archie Final entre 70 y 85 —
@@ -681,19 +696,32 @@ export default function KamDashboard({ data }) {
       const emailToKam = new Map((kams || []).map((k) => [k.email?.toLowerCase().trim(), k]))
       const updatedAt = new Date().toISOString()
       const updates = []
-      const unmatchedEmails = []
+      const unmatchedEmails = new Set()
+
+      // "Forward-fill": el OWNER solo viene completo en la fila de subtotal de
+      // cada KAM — se guarda acá y se reutiliza en todas las filas de aliados
+      // que le siguen, hasta que aparezca un OWNER nuevo (o se corte el archivo).
+      let currentEmail = null
 
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i]
         if (!row || row.every((cell) => cell === null || cell === '')) continue
 
-        const email = String(row[emailIdx] || '').toLowerCase().trim()
-        const brandName = String(row[brandIdx] || '').trim()
-        if (!email || !brandName) continue
+        const ownerCell = row[emailIdx]
+        if (ownerCell !== null && ownerCell !== undefined && ownerCell !== '') {
+          currentEmail = String(ownerCell).toLowerCase().trim()
+        }
+        if (!currentEmail || currentEmail === 'total') continue
 
-        const kam = emailToKam.get(email)
+        const brandCell = row[brandIdx]
+        const parsedBrand = parseBrandIdName(brandCell)
+        // Las filas de subtotal (por KAM o por Bucket PRIORITIZED/NON PRIORITIZED/
+        // ADJUSTED) repiten "Total" en la columna del aliado — no son aliados reales.
+        if (!parsedBrand || parsedBrand.name.toLowerCase() === 'total') continue
+
+        const kam = emailToKam.get(currentEmail)
         if (!kam) {
-          unmatchedEmails.push(email)
+          unmatchedEmails.add(currentEmail)
           continue
         }
 
@@ -702,8 +730,8 @@ export default function KamDashboard({ data }) {
 
         updates.push({
           kam_id: kam.id,
-          brand_key: brandName.toLowerCase(),
-          brand_name: brandName,
+          brand_key: parsedBrand.key,
+          brand_name: parsedBrand.name,
           md_archie_final_pct: mdArchieFinalPct,
           updated_at: updatedAt,
         })
@@ -728,8 +756,8 @@ export default function KamDashboard({ data }) {
 
       const uniqueKams = new Set(updates.map((u) => u.kam_id)).size
       let message = `✅ ${updates.length} aliado${updates.length === 1 ? '' : 's'} actualizado${updates.length === 1 ? '' : 's'} en ${uniqueKams} KAM${uniqueKams === 1 ? '' : 's'}.`
-      if (unmatchedEmails.length > 0) {
-        message += ` ${unmatchedEmails.length} fila${unmatchedEmails.length === 1 ? '' : 's'} no coincidió con ningún KAM.`
+      if (unmatchedEmails.size > 0) {
+        message += ` ${unmatchedEmails.size} email${unmatchedEmails.size === 1 ? '' : 's'} no coincidió con ningún KAM (${[...unmatchedEmails].join(', ')}).`
       }
       setCompensationImportStatus({ type: 'success', message })
     } catch (err) {
