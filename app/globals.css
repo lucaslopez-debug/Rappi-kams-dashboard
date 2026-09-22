@@ -111,6 +111,70 @@ body {
   object-fit: contain;
 }
 
+.header-alert-actions {
+  display: flex;
+  align-items: center;
+}
+
+.header-alert-btn {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid var(--danger);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  /* Parpadea todo el tiempo que el botón esté montado — solo se renderiza
+     cuando mdDropAlert tiene resultados, así que "siempre visible" ya
+     equivale a "siempre que haya brands en 0%". Fuerte a propósito: tiene
+     que leerse como advertencia, no como un detalle decorativo. */
+  animation: headerAlertBlink 0.9s ease-in-out infinite;
+}
+
+.header-alert-btn:hover {
+  border-color: var(--danger);
+  background: rgba(244, 67, 54, 0.18);
+}
+
+@keyframes headerAlertBlink {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    background: rgba(244, 67, 54, 0.1);
+    box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.8);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(1.12);
+    background: rgba(244, 67, 54, 0.45);
+    box-shadow: 0 0 0 14px rgba(244, 67, 54, 0);
+  }
+}
+
+.header-alert-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 20px;
+  background: var(--danger);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #1E1E1E;
+}
+
 .container {
   max-width: 1260px;
   margin: 0 auto;
@@ -1181,6 +1245,182 @@ body {
   opacity: 0.7;
 }
 
+/* Alerta "Brands caídas a 0% de Markdown" — botón en el header (badge con el
+   total) que abre este modal, con un grupo colapsable por KAM adentro. Más
+   ancho/alto que .resumen-modal porque adentro va una tabla de 7 columnas. */
+.md-drop-modal {
+  background: #1A1A1A;
+  border-radius: 16px;
+  border: 1px solid var(--danger);
+  padding: 20px;
+  max-width: 920px;
+  width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.md-drop-modal .table-subtitle {
+  max-width: none;
+  margin-top: 4px;
+}
+
+.md-drop-kam-group {
+  border: 1px solid var(--border-gray);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.md-drop-kam-group:last-child {
+  margin-bottom: 0;
+}
+
+.md-drop-kam-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  transition: background 0.15s ease;
+}
+
+.md-drop-kam-header:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.md-drop-kam-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.md-drop-kam-arrow {
+  color: var(--text-light);
+  font-size: 12px;
+  width: 12px;
+}
+
+.md-drop-kam-name {
+  font-weight: 700;
+  color: var(--text-dark);
+  font-size: 13px;
+}
+
+.md-drop-kam-region {
+  color: var(--text-light);
+  font-size: 12px;
+}
+
+.md-drop-kam-export-btn {
+  background: transparent;
+  border: 1px solid var(--border-gray);
+  color: var(--text-light);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.md-drop-kam-export-btn:hover {
+  border-color: var(--secondary);
+  color: var(--text-dark);
+}
+
+.md-drop-kam-count {
+  background: rgba(244, 67, 54, 0.18);
+  color: var(--danger);
+  font-weight: 700;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+/* Contenido de la tarjeta exportable (JPEG) de un KAM — lista de brands
+   caídas a 0%, dentro de .resumen-card (mismo look que el Resumen Ejecutivo). */
+.md-drop-export-line {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-gray);
+}
+
+.md-drop-export-line:last-child {
+  border-bottom: none;
+}
+
+.md-drop-export-brand {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin-bottom: 3px;
+}
+
+.md-drop-export-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 10.5px;
+  color: var(--text-light);
+}
+
+/* Resumen total al final del modal — suma de órdenes/tráfico de todos los
+   KAMs, para el impacto combinado (no solo aliado por aliado). */
+.md-drop-totals {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: rgba(244, 67, 54, 0.08);
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+}
+
+.md-drop-totals-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin-bottom: 10px;
+}
+
+.md-drop-totals-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.md-drop-totals-stat {
+  text-align: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-gray);
+  border-radius: 8px;
+  padding: 8px 6px;
+}
+
+.md-drop-totals-label {
+  font-size: 9.5px;
+  color: var(--text-light);
+  margin-bottom: 4px;
+}
+
+.md-drop-totals-value {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-dark);
+}
+
+.md-drop-totals-value.danger {
+  color: var(--danger);
+}
+
 /* Posibles Casos */
 .insights-grid {
   display: grid;
@@ -1577,6 +1817,10 @@ body {
 
   .resumen-brands-row {
     flex-direction: column;
+  }
+
+  .md-drop-totals-row {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .charts-grid {

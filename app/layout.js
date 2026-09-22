@@ -37,6 +37,9 @@ export default function RootLayout({ children }) {
               alt="Rappi"
               className="header-logo"
             />
+            {/* Contenedor vacío: acá se porta el botón de alerta (🚨 Brands
+                caídas a 0% de Markdown), en la esquina superior derecha. */}
+            <div id="header-alert-actions" className="header-alert-actions"></div>
           </div>
         </header>
         {children}

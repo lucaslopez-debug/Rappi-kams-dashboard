@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { BarChart, Bar, XAxis, YAxis, LabelList, ResponsiveContainer } from 'recharts'
 import { Poppins } from 'next/font/google'
-import { toPng } from 'html-to-image'
+import { toPng, toJpeg } from 'html-to-image'
 import AccionablesPanel from '@/components/AccionablesPanel'
 import { supabase } from '@/lib/supabase'
 
@@ -357,6 +357,16 @@ const URGENT_MD_TARGET_CUT = 80
 // se conecte directo a la API de Docs (ver Scripts/google-oauth-setup.js).
 const RESUMEN_DOC_URL = 'https://docs.google.com/document/d/1yGBOOXnDTgdCZ0ysSHYbziUslFAAS7fzPUZMpacgbro/edit'
 
+// Alerta "Brands caídas a 0% de Markdown": compara la primera quincena del
+// mes pasado contra la última semana cerrada, para TODOS los KAMs a la vez.
+// semana_fecha se guarda como "DD Mon" con abreviatura en inglés (así la
+// graba Scripts/sync-sheets.js / app/api/sync), sin año — por eso esto asume
+// que no hay dos ocurrencias del mismo "DD Mon" separadas por más de un año
+// en la tabla, que es como ya funciona el resto del dashboard.
+const MONTH_ABBR_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const MONTH_NAMES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+const MD_DROP_EPSILON = 0.01
+
 // Acepta el % como "78%", "78" o "0.78" (fracción) — normaliza todo a puntos
 // porcentuales (78). Si el texto trae el símbolo "%" explícito, el número ya
 // está en puntos porcentuales y no se reescala.
@@ -534,6 +544,150 @@ export default function KamDashboard({ data }) {
 
   const { kams, weeklyData } = data
   const kamActive = kams?.[activeKam]
+
+  // Alerta "Brands caídas a 0% de Markdown" — cruza TODOS los KAMs y TODAS
+  // las brands (no depende del KAM seleccionado), comparando el promedio de
+  // markdown/órdenes/tráfico de la primera quincena del mes pasado contra la
+  // última semana cerrada, para detectar brands que tenían markdown activo y
+  // hoy están en 0%.
+  const [expandedDropKams, setExpandedDropKams] = useState(() => new Set())
+
+  const mdDropAlert = useMemo(() => {
+    if (!weeklyData?.length || !kams?.length) return null
+
+    const today = new Date()
+    const prevMonthIdx = (today.getMonth() - 1 + 12) % 12
+    const prevMonthAbbr = MONTH_ABBR_EN[prevMonthIdx]
+    const baselineWeekRe = new RegExp(`^(\\d{1,2}) ${prevMonthAbbr}$`)
+
+    const allWeeks = [...new Set(weeklyData.map(r => r.semana_fecha?.trim()).filter(Boolean))]
+
+    // "Primeros 15 días" del mes pasado: semanas de ese mes cuyo día de
+    // arranque cae en la primera quincena (03 Aug, 10 Aug → sí; 17 Aug → no).
+    const baselineWeeks = allWeeks.filter((w) => {
+      const m = w.match(baselineWeekRe)
+      return m && Number(m[1]) <= 15
+    })
+    if (baselineWeeks.length === 0) return null
+
+    // "Hoy": la última semana cerrada con label bien formado (se ignoran
+    // labels rotos tipo "01–19 Jul" que quedaron de una carga vieja).
+    const cleanWeeks = allWeeks.filter((w) => parseWeekLabel(w) !== null)
+    const currentWeek = [...cleanWeeks].sort(compareWeekLabels).slice(-1)[0]
+    if (!currentWeek || baselineWeeks.includes(currentWeek)) return null
+
+    const brandRows = weeklyData.filter((r) => r.brand_name !== 'TOTAL_KAM')
+    const keyOf = (r) => `${r.kam_id}::${r.brand_id || r.brand_name}`
+
+    const baselineByKey = new Map()
+    brandRows.forEach((r) => {
+      if (!baselineWeeks.includes(r.semana_fecha?.trim())) return
+      const key = keyOf(r)
+      const acc = baselineByKey.get(key) || {
+        kam_id: r.kam_id, brand_name: r.brand_name, orders: 0, trafico: 0, markdownSum: 0, weeks: 0,
+      }
+      acc.orders += r.orders || 0
+      acc.trafico += r.trafico || 0
+      acc.markdownSum += r.markdown || 0
+      acc.weeks += 1
+      baselineByKey.set(key, acc)
+    })
+
+    const currentByKey = new Map()
+    brandRows.forEach((r) => {
+      if (r.semana_fecha?.trim() !== currentWeek) return
+      currentByKey.set(keyOf(r), r)
+    })
+
+    const kamById = new Map(kams.map((k) => [k.id, k]))
+    const groupsByKam = new Map()
+
+    baselineByKey.forEach((base, key) => {
+      const baselineMarkdown = base.markdownSum / base.weeks
+      if (baselineMarkdown <= MD_DROP_EPSILON) return // no tenía markdown activo, no cuenta como "caída"
+
+      const current = currentByKey.get(key)
+      const currentMarkdown = current?.markdown || 0
+      if (currentMarkdown > MD_DROP_EPSILON) return // sigue con markdown, no cayó a 0
+
+      const kam = kamById.get(base.kam_id)
+      if (!kam) return
+
+      if (!groupsByKam.has(base.kam_id)) {
+        groupsByKam.set(base.kam_id, { kam, brands: [] })
+      }
+      groupsByKam.get(base.kam_id).brands.push({
+        brand_name: base.brand_name,
+        baseline: { markdown: baselineMarkdown, orders: base.orders, trafico: base.trafico },
+        current: { markdown: currentMarkdown, orders: current?.orders || 0, trafico: current?.trafico || 0 },
+        foundToday: !!current,
+      })
+    })
+
+    const kamGroups = [...groupsByKam.values()]
+      .map((g) => ({ ...g, brands: g.brands.sort((a, b) => b.baseline.markdown - a.baseline.markdown) }))
+      .sort((a, b) => b.brands.length - a.brands.length)
+
+    const totalBrands = kamGroups.reduce((sum, g) => sum + g.brands.length, 0)
+    if (totalBrands === 0) return null
+
+    // Resumen total: suma de órdenes y tráfico de TODAS las brands caídas, de
+    // TODOS los KAMs juntos — para dimensionar el impacto combinado, no solo
+    // verlo aliado por aliado.
+    const totals = kamGroups.reduce((acc, g) => {
+      g.brands.forEach((b) => {
+        acc.baselineOrders += b.baseline.orders
+        acc.baselineTrafico += b.baseline.trafico
+        acc.currentOrders += b.current.orders
+        acc.currentTrafico += b.current.trafico
+      })
+      return acc
+    }, { baselineOrders: 0, baselineTrafico: 0, currentOrders: 0, currentTrafico: 0 })
+
+    return {
+      mesLabel: MONTH_NAMES_ES[prevMonthIdx],
+      baselineWeeks,
+      currentWeek,
+      totalBrands,
+      kamGroups,
+      totals,
+    }
+  }, [weeklyData, kams])
+
+  const toggleDropKam = useCallback((kamId) => {
+    setExpandedDropKams((prev) => {
+      const next = new Set(prev)
+      if (next.has(kamId)) next.delete(kamId)
+      else next.add(kamId)
+      return next
+    })
+  }, [])
+
+  // Exportar la situación de UN KAM (de la alerta de brands caídas a 0%) como
+  // JPEG, para mandarla al equipo aliado por aliado — abre una tarjeta
+  // standalone (mismo lenguaje visual que el Resumen Ejecutivo) en vez de
+  // capturar el acordeón tal cual, así la imagen queda prolija para compartir
+  // (sin flechas/botones de la UI) sin importar si el grupo estaba plegado.
+  const [dropExportTarget, setDropExportTarget] = useState(null)
+  const [dropExportStatus, setDropExportStatus] = useState(null)
+  const dropExportCardRef = useRef(null)
+
+  const handleDownloadDropJpeg = useCallback(async () => {
+    if (!dropExportCardRef.current || !dropExportTarget) return
+    setDropExportStatus('loading')
+    try {
+      const dataUrl = await toJpeg(dropExportCardRef.current, { quality: 0.95, pixelRatio: 2, backgroundColor: '#1E1E1E' })
+      const link = document.createElement('a')
+      const fileKam = dropExportTarget.kam.nombre.toLowerCase().replace(/\s+/g, '-')
+      link.download = `brands-caidas-md-${fileKam}.jpeg`.replace(/\s+/g, '')
+      link.href = dataUrl
+      link.click()
+      setDropExportStatus(null)
+    } catch (err) {
+      console.error('❌ Error exportando situación a JPEG:', err)
+      setDropExportStatus('error')
+    }
+  }, [dropExportTarget])
 
   // Estado por aliado (Contactado / No contactado / Mkd activo / etc.), no
   // depende de la semana — se carga entero para el KAM activo y se pisa en
@@ -794,6 +948,15 @@ export default function KamDashboard({ data }) {
   const [importActionsHost, setImportActionsHost] = useState(null)
   useEffect(() => {
     setImportActionsHost(document.getElementById('header-import-actions'))
+  }, [])
+
+  // Botón de alerta (🚨 Brands caídas a 0% de Markdown), portado al header a
+  // la derecha del logo — mismo mecanismo que los botones de Importar de
+  // arriba. El modal con el detalle se abre al hacer click.
+  const [alertActionsHost, setAlertActionsHost] = useState(null)
+  const [showMdDropModal, setShowMdDropModal] = useState(false)
+  useEffect(() => {
+    setAlertActionsHost(document.getElementById('header-alert-actions'))
   }, [])
 
   const handleCompensationImportClick = () => compensationImportInputRef.current?.click()
@@ -1339,6 +1502,186 @@ export default function KamDashboard({ data }) {
           ) : (
             <div className="no-data">Todavía no hay datos de Brands with Markdown importados — usá "Importar Excel" para cargarlos.</div>
           )}
+        </div>
+      )}
+
+      {/* ALERTA GENERAL (todos los KAMs): brands que tenían markdown activo en
+          la primera quincena del mes pasado y hoy están en 0%. No depende del
+          KAM ni de la pestaña seleccionada. */}
+      {/* El botón en sí vive en el header (portado a #header-alert-actions,
+          esquina superior derecha) — acá solo se arma el contenido que porta
+          y el modal que abre al hacer click. */}
+      {alertActionsHost && mdDropAlert && createPortal(
+        <button
+          type="button"
+          className="header-alert-btn"
+          onClick={() => setShowMdDropModal(true)}
+          title={`Brands caídas a 0% de Markdown (${mdDropAlert.totalBrands})`}
+        >
+          🚨
+          <span className="header-alert-badge">{mdDropAlert.totalBrands}</span>
+        </button>,
+        alertActionsHost
+      )}
+
+      {showMdDropModal && mdDropAlert && (
+        <div className="resumen-modal-overlay" onClick={() => setShowMdDropModal(false)}>
+          <div className="md-drop-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="resumen-modal-header">
+              <div className="resumen-modal-title">🚨 Brands caídas a 0% de Markdown</div>
+              <button type="button" className="resumen-modal-close" onClick={() => setShowMdDropModal(false)}>✕</button>
+            </div>
+
+            <div className="table-subtitle">
+              Compara el promedio de la primera quincena de {mdDropAlert.mesLabel} ({mdDropAlert.baselineWeeks.join(' y ')})
+              {' '}contra la semana del {mdDropAlert.currentWeek} — {mdDropAlert.totalBrands} brand{mdDropAlert.totalBrands === 1 ? '' : 's'} en {mdDropAlert.kamGroups.length} KAM{mdDropAlert.kamGroups.length === 1 ? '' : 's'} tenían markdown activo y hoy están en 0%.
+            </div>
+
+            {mdDropAlert.kamGroups.map(({ kam, brands }) => {
+              const expanded = expandedDropKams.has(kam.id)
+              return (
+                <div key={kam.id} className="md-drop-kam-group">
+                  <div className="md-drop-kam-header">
+                    <button
+                      type="button"
+                      className="md-drop-kam-toggle"
+                      onClick={() => toggleDropKam(kam.id)}
+                    >
+                      <span className="md-drop-kam-arrow">{expanded ? '▾' : '▸'}</span>
+                      <span className="md-drop-kam-name">{kam.nombre}</span>
+                      <span className="md-drop-kam-region">Kam de {kam.region}</span>
+                    </button>
+                    <span className="md-drop-kam-count">{brands.length} brand{brands.length === 1 ? '' : 's'}</span>
+                    <button
+                      type="button"
+                      className="md-drop-kam-export-btn"
+                      onClick={() => { setDropExportStatus(null); setDropExportTarget({ kam, brands }) }}
+                      title="Exportar la situación de este KAM como JPEG para mandar al equipo"
+                    >
+                      📷 JPEG
+                    </button>
+                  </div>
+
+                  {expanded && (
+                    <div className="table-container">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th rowSpan={2}>Aliado</th>
+                            <th colSpan={3}>{mdDropAlert.mesLabel} (1ra quincena)</th>
+                            <th colSpan={3}>Hoy ({mdDropAlert.currentWeek})</th>
+                          </tr>
+                          <tr>
+                            <th>Markdown</th>
+                            <th>Órdenes</th>
+                            <th>Tráfico</th>
+                            <th>Markdown</th>
+                            <th>Órdenes</th>
+                            <th>Tráfico</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {brands.map((b) => (
+                            <tr key={b.brand_name}>
+                              <td><strong>{b.brand_name}</strong></td>
+                              <td>{b.baseline.markdown.toFixed(2)}%</td>
+                              <td>{b.baseline.orders.toLocaleString()}</td>
+                              <td>{b.baseline.trafico.toLocaleString()}</td>
+                              <td style={{ color: 'var(--danger)', fontWeight: 700 }}>{b.current.markdown.toFixed(2)}%</td>
+                              <td>{b.foundToday ? b.current.orders.toLocaleString() : '—'}</td>
+                              <td>{b.foundToday ? b.current.trafico.toLocaleString() : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Resumen total: suma de órdenes y tráfico de TODOS los KAMs
+                juntos, para dimensionar el impacto combinado de la caída. */}
+            <div className="md-drop-totals">
+              <div className="md-drop-totals-title">
+                📊 Total combinado — {mdDropAlert.totalBrands} brand{mdDropAlert.totalBrands === 1 ? '' : 's'} en {mdDropAlert.kamGroups.length} KAM{mdDropAlert.kamGroups.length === 1 ? '' : 's'}
+              </div>
+              <div className="md-drop-totals-row">
+                <div className="md-drop-totals-stat">
+                  <div className="md-drop-totals-label">Órdenes — {mdDropAlert.mesLabel} (1ra quincena)</div>
+                  <div className="md-drop-totals-value">{mdDropAlert.totals.baselineOrders.toLocaleString()}</div>
+                </div>
+                <div className="md-drop-totals-stat">
+                  <div className="md-drop-totals-label">Órdenes — Hoy ({mdDropAlert.currentWeek})</div>
+                  <div className="md-drop-totals-value danger">{mdDropAlert.totals.currentOrders.toLocaleString()}</div>
+                </div>
+                <div className="md-drop-totals-stat">
+                  <div className="md-drop-totals-label">Tráfico — {mdDropAlert.mesLabel} (1ra quincena)</div>
+                  <div className="md-drop-totals-value">{mdDropAlert.totals.baselineTrafico.toLocaleString()}</div>
+                </div>
+                <div className="md-drop-totals-stat">
+                  <div className="md-drop-totals-label">Tráfico — Hoy ({mdDropAlert.currentWeek})</div>
+                  <div className="md-drop-totals-value danger">{mdDropAlert.totals.currentTrafico.toLocaleString()}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de exportación JPEG de la situación de un KAM (alerta de brands
+          caídas a 0%) — mismo patrón que el modal de Resumen Ejecutivo:
+          tarjeta standalone capturable con html-to-image (toJpeg). */}
+      {dropExportTarget && mdDropAlert && (
+        <div className="resumen-modal-overlay" onClick={() => setDropExportTarget(null)}>
+          <div className="resumen-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="resumen-modal-header">
+              <div className="resumen-modal-title">📷 Exportar situación — {dropExportTarget.kam.nombre}</div>
+              <button type="button" className="resumen-modal-close" onClick={() => setDropExportTarget(null)}>✕</button>
+            </div>
+
+            <div className="resumen-card" ref={dropExportCardRef}>
+              <div className={`resumen-card-header ${poppins.className}`}>
+                <div className="resumen-card-brand">🚨 Rappi · Brands caídas a 0% de Markdown</div>
+                <div className="resumen-card-kam">{dropExportTarget.kam.nombre}</div>
+                <div className="resumen-card-meta">
+                  Kam de {dropExportTarget.kam.region} · {dropExportTarget.brands.length} brand{dropExportTarget.brands.length === 1 ? '' : 's'}
+                  {' '}· {mdDropAlert.mesLabel} (1ra quincena) vs. {mdDropAlert.currentWeek}
+                </div>
+              </div>
+
+              <div className="md-drop-export-list">
+                {dropExportTarget.brands.map((b) => (
+                  <div key={b.brand_name} className="md-drop-export-line">
+                    <div className="md-drop-export-brand">{b.brand_name}</div>
+                    <div className="md-drop-export-metrics">
+                      <span>MD: {b.baseline.markdown.toFixed(1)}% → <strong style={{ color: 'var(--danger)' }}>0%</strong></span>
+                      <span>Órdenes: {b.baseline.orders.toLocaleString()} → {b.foundToday ? b.current.orders.toLocaleString() : '—'}</span>
+                      <span>Tráfico: {b.baseline.trafico.toLocaleString()} → {b.foundToday ? b.current.trafico.toLocaleString() : '—'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="resumen-card-footer">
+                Generado el {new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })} · Dashboard KAMs Semanal
+              </div>
+            </div>
+
+            <div className="resumen-modal-actions">
+              <button
+                type="button"
+                className="resumen-download-btn"
+                onClick={handleDownloadDropJpeg}
+                disabled={dropExportStatus === 'loading'}
+              >
+                {dropExportStatus === 'loading' ? 'Generando...' : '⬇️ Descargar JPEG'}
+              </button>
+            </div>
+            {dropExportStatus === 'error' && (
+              <div className="resumen-export-error">No se pudo generar la imagen. Probá de nuevo.</div>
+            )}
+          </div>
         </div>
       )}
 
