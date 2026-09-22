@@ -26,11 +26,18 @@ export default function RootLayout({ children }) {
             <h1>📊 Dashboard KAMs Semanal</h1>
             <p>Rappi - Análisis de Métricas Semanales</p>
           </div>
-          <img 
-            src="/rappi-logo.webp" 
-            alt="Rappi" 
-            className="header-logo"
-          />
+          <div className="header-right">
+            {/* Contenedor vacío: KamDashboard porta acá (React portal) los
+                botones de Importar Excel / Importar Compensation, así quedan
+                a la izquierda del logo aunque la lógica siga viviendo en el
+                componente del dashboard. */}
+            <div id="header-import-actions" className="header-import-actions"></div>
+            <img
+              src="/rappi-logo.webp"
+              alt="Rappi"
+              className="header-logo"
+            />
+          </div>
         </header>
         {children}
       </body>

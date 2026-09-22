@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { BarChart, Bar, XAxis, YAxis, LabelList, ResponsiveContainer } from 'recharts'
 import { Poppins } from 'next/font/google'
 import { toPng } from 'html-to-image'
@@ -69,7 +70,7 @@ const LOW_BASE_ORDERS = 5
 // Estado comercial de cada aliado (independiente de la semana, se pisa cada
 // vez que se cambia) — se persiste en la tabla brand_status por (kam_id,
 // brand_key), donde brand_key es brand_id si existe o si no brand_name
-const BRAND_STATUS_OPTIONS = ['No contactado', 'Contactado', 'Mkd activo', 'Actualizar Mkd', 'Mandar a BD']
+const BRAND_STATUS_OPTIONS = ['No contactado', 'Contactado', 'Mkd activo', 'Actualizar Mkd', 'Mandar a BD', 'Blocker']
 
 const BRAND_STATUS_COLORS = {
   'No contactado': { bg: '#2A2A2A', text: '#B0B0B0' },
@@ -77,6 +78,7 @@ const BRAND_STATUS_COLORS = {
   'Mkd activo': { bg: 'rgba(76, 175, 80, 0.18)', text: '#4CAF50' },
   'Actualizar Mkd': { bg: 'rgba(255, 193, 7, 0.18)', text: '#FFC107' },
   'Mandar a BD': { bg: 'rgba(255, 82, 82, 0.18)', text: '#FF5252' },
+  'Blocker': { bg: 'rgba(183, 28, 28, 0.25)', text: '#EF5350' },
 }
 
 function brandKeyOf(brand) {
@@ -180,6 +182,120 @@ function buildMinutaText(m) {
   return text
 }
 
+// Arma el contenido del Resumen Ejecutivo para copiar al portapapeles como
+// HTML (con negrita/colores/viñetas) + texto plano de respaldo — Google Docs
+// interpreta el HTML del portapapeles al pegar (Ctrl+V), así que esto le
+// llega formateado sin tener que integrar la API de Docs.
+function buildResumenClipboardContent(resumen) {
+  const COLOR_UP = '#4CAF50'
+  const COLOR_DOWN = '#F44336'
+  const COLOR_GRAY = '#9E9E9E'
+
+  const htmlParts = []
+  const textParts = []
+
+  const kpiHtml = (label, valueText, diffValue, diffSuffix = '%', decimals = 1) => {
+    if (diffValue === null || diffValue === undefined || Number.isNaN(diffValue)) {
+      return `<div>${label}: ${valueText}  <span style="color:${COLOR_GRAY};">(—)</span></div>`
+    }
+    const sign = diffValue > 0 ? '+' : ''
+    const color = diffValue < 0 ? COLOR_DOWN : COLOR_UP
+    return `<div>${label}: ${valueText}  <span style="color:${color}; font-weight:bold;">(${sign}${diffValue.toFixed(decimals)}${diffSuffix} vs. semana anterior)</span></div>`
+  }
+  const kpiText = (label, valueText, diffValue, diffSuffix = '%', decimals = 1) => {
+    if (diffValue === null || diffValue === undefined || Number.isNaN(diffValue)) return `${label}: ${valueText} (—)`
+    const sign = diffValue > 0 ? '+' : ''
+    return `${label}: ${valueText} (${sign}${diffValue.toFixed(decimals)}${diffSuffix} vs. semana anterior)`
+  }
+
+  const kamNombre = resumen.kam?.nombre || 'KAM'
+  htmlParts.push(`<div style="font-size:15pt; font-weight:bold;">📊 Resumen Semanal — ${kamNombre}</div>`)
+  textParts.push(`📊 Resumen Semanal — ${kamNombre}`)
+
+  let meta = `Kam de ${resumen.kam?.region || '—'} · ${resumen.kam?.brandCount ?? 0} brands · Semana del ${resumen.semana}`
+  if (resumen.semanaAnterior) meta += ` (vs. ${resumen.semanaAnterior})`
+  htmlParts.push(`<div style="font-size:9pt; font-style:italic; color:${COLOR_GRAY};">${meta}</div><div>&nbsp;</div>`)
+  textParts.push(meta, '')
+
+  htmlParts.push('<div style="font-size:12pt; font-weight:bold;">KPIs de la semana</div>')
+  textParts.push('KPIs de la semana')
+
+  const orders = ['📦 Órdenes', resumen.orders.value.toLocaleString(), resumen.orders.diff?.pct ?? null]
+  const markdown = ['📊 Markdown', `${resumen.markdown.value.toFixed(1)}%`, resumen.markdown.diff?.pct ?? null]
+  const trafico = ['📶 Tráfico', resumen.trafico.value.toLocaleString(), resumen.trafico.diff?.pct ?? null]
+  const conversion = ['🎯 Conversión', resumen.conversion ? `${resumen.conversion.value.toFixed(2)}%` : '—', resumen.conversion?.diff ?? null, ' p.p.', 2]
+
+  ;[orders, markdown, trafico, conversion].forEach(([label, value, diff, suffix, decimals]) => {
+    htmlParts.push(kpiHtml(label, value, diff, suffix, decimals))
+    textParts.push(kpiText(label, value, diff, suffix, decimals))
+  })
+  htmlParts.push('<div>&nbsp;</div>')
+  textParts.push('')
+
+  if (resumen.minutaText) {
+    htmlParts.push(`<div style="font-style:italic;">📝 ${resumen.minutaText}</div><div>&nbsp;</div>`)
+    textParts.push(`📝 ${resumen.minutaText}`, '')
+  }
+
+  if (resumen.brandMd) {
+    const { status, calc } = resumen.brandMd
+    const { color, label } = mdStatusFor(calc.achievedPct)
+    htmlParts.push(`<div>🎯 Brands with Markdown: ${status.brands_md_result} / ${status.brands_md_target}  <span style="color:${color}; font-weight:bold;">(${calc.achievedPct.toFixed(1)}% · ${label})</span></div>`)
+    textParts.push(`🎯 Brands with Markdown: ${status.brands_md_result} / ${status.brands_md_target} (${calc.achievedPct.toFixed(1)}% · ${label})`)
+    if (resumen.mdTargetText) {
+      htmlParts.push(`<div style="font-size:9.5pt; color:${COLOR_GRAY};">${resumen.mdTargetText}</div>`)
+      textParts.push(resumen.mdTargetText)
+    }
+    htmlParts.push('<div>&nbsp;</div>')
+    textParts.push('')
+  }
+
+  if (resumen.urgentBrands?.total > 0) {
+    const total = resumen.urgentBrands.total
+    const title = `🚨 Accionar Urgente — ${total} aliado${total === 1 ? '' : 's'} cerca del target (70%-85% de MD Archie Final)`
+    htmlParts.push(`<div style="font-weight:bold;">${title}</div><ul>`)
+    textParts.push(title)
+    resumen.urgentBrands.top.forEach((r) => {
+      const color = mdStatusFor(r.md_archie_final_pct).color
+      htmlParts.push(`<li>${r.brand_name}: <span style="color:${color}; font-weight:bold;">${r.md_archie_final_pct.toFixed(1)}%</span></li>`)
+      textParts.push(`• ${r.brand_name}: ${r.md_archie_final_pct.toFixed(1)}%`)
+    })
+    htmlParts.push('</ul><div>&nbsp;</div>')
+    textParts.push('')
+  }
+
+  if (resumen.topSubas?.length > 0) {
+    htmlParts.push('<div style="font-weight:bold;">🔼 Mayor suba de MD</div><ul>')
+    textParts.push('🔼 Mayor suba de MD')
+    resumen.topSubas.forEach((b) => {
+      htmlParts.push(`<li>${b.brand_name}: <span style="color:${COLOR_UP}; font-weight:bold;">+${b.markdownDiffPct.toFixed(1)}%</span></li>`)
+      textParts.push(`• ${b.brand_name}: +${b.markdownDiffPct.toFixed(1)}%`)
+    })
+    htmlParts.push('</ul><div>&nbsp;</div>')
+    textParts.push('')
+  }
+
+  if (resumen.topBajas?.length > 0) {
+    htmlParts.push('<div style="font-weight:bold;">🔽 Mayor baja de MD</div><ul>')
+    textParts.push('🔽 Mayor baja de MD')
+    resumen.topBajas.forEach((b) => {
+      htmlParts.push(`<li>${b.brand_name}: <span style="color:${COLOR_DOWN}; font-weight:bold;">${b.markdownDiffPct.toFixed(1)}%</span></li>`)
+      textParts.push(`• ${b.brand_name}: ${b.markdownDiffPct.toFixed(1)}%`)
+    })
+    htmlParts.push('</ul><div>&nbsp;</div>')
+    textParts.push('')
+  }
+
+  const fecha = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
+  htmlParts.push(`<div style="font-size:8.5pt; font-style:italic; color:${COLOR_GRAY};">Generado el ${fecha} · Dashboard KAMs Semanal</div>`)
+  textParts.push(`Generado el ${fecha} · Dashboard KAMs Semanal`)
+
+  return {
+    html: `<div style="font-family:Arial,sans-serif;">${htmlParts.join('')}</div>`,
+    text: textParts.join('\n'),
+  }
+}
+
 // Importación de Excel para Brands with Markdown: nombres de columna aceptados
 // por campo (normalizados a minúscula/sin espacios extra), para bancar que el
 // archivo venga con alguna variación de mayúsculas/espacios respecto al sheet
@@ -235,6 +351,11 @@ function parseBrandIdName(raw) {
 const URGENT_MD_MIN = 70
 const URGENT_MD_MAX = 85
 const URGENT_MD_TARGET_CUT = 80
+
+// Doc de bitácora semanal donde se pega el Resumen Ejecutivo copiado con
+// "📋 Copiar para Doc" — mismo doc que quedará como destino cuando el export
+// se conecte directo a la API de Docs (ver Scripts/google-oauth-setup.js).
+const RESUMEN_DOC_URL = 'https://docs.google.com/document/d/1yGBOOXnDTgdCZ0ysSHYbziUslFAAS7fzPUZMpacgbro/edit'
 
 // Acepta el % como "78%", "78" o "0.78" (fracción) — normaliza todo a puntos
 // porcentuales (78). Si el texto trae el símbolo "%" explícito, el número ya
@@ -666,6 +787,15 @@ export default function KamDashboard({ data }) {
   const compensationImportInputRef = useRef(null)
   const [compensationImportStatus, setCompensationImportStatus] = useState(null)
 
+  // Los botones de Importar Excel / Importar Compensation se portan (React
+  // portal) al header (ver app/layout.js), a la izquierda del logo de Rappi,
+  // en vez de renderizarse acá donde vive la lógica — el nodo del header
+  // recién existe en el DOM después de montar, de ahí el useEffect.
+  const [importActionsHost, setImportActionsHost] = useState(null)
+  useEffect(() => {
+    setImportActionsHost(document.getElementById('header-import-actions'))
+  }, [])
+
   const handleCompensationImportClick = () => compensationImportInputRef.current?.click()
 
   const handleCompensationImportFile = async (e) => {
@@ -1034,22 +1164,33 @@ export default function KamDashboard({ data }) {
   }, [kamActive, latestWeekBrands])
 
   // Resumen Ejecutivo: junta todo lo que ya se calculó arriba (órdenes/markdown/
-  // tráfico WoW, Brands with Markdown, top/bottom 3) en un solo objeto para
-  // renderizar la tarjeta exportable. No agrega ningún fetch nuevo — es puramente
-  // una recombinación de datos que el resto del dashboard ya tiene calculados.
+  // tráfico/conversión WoW, minuta en texto, Brands with Markdown, Accionar
+  // Urgente y top/bottom 5) en un solo objeto para renderizar la tarjeta
+  // exportable. No agrega ningún fetch nuevo — es puramente una recombinación
+  // de datos que el resto del dashboard ya tiene calculados, para que la
+  // imagen exportada alcance para analizar la semana sin volver al dashboard.
   const resumenEjecutivo = useMemo(() => {
     if (!activeKamInfo || !latestWeek) return null
     return {
       kam: activeKamInfo,
       semana: latestWeek.semana,
+      semanaAnterior: conversionMinuta?.prev?.semana || null,
       orders: { value: latestWeek.orders, diff: lastWeekVsPrev },
       markdown: { value: latestWeek.markdown, diff: lastMdVsPrev },
       trafico: { value: latestWeek.trafico, diff: lastTrafficVsPrev },
+      conversion: conversionMinuta && conversionMinuta.conversionLast !== null
+        ? { value: conversionMinuta.conversionLast, diff: conversionMinuta.conversionDiff }
+        : null,
+      minutaText: conversionMinuta ? buildMinutaText(conversionMinuta) : null,
       brandMd: brandMdStatus && brandMdCalc ? { status: brandMdStatus, calc: brandMdCalc } : null,
-      topSubas: topBrands.slice(0, 3),
-      topBajas: bottomBrands.slice(0, 3),
+      mdTargetText: (brandMdStatus && brandMdCalc)
+        ? buildMdTargetMinutaText(activeKamInfo.nombre, brandMdStatus.brands_md_result, brandMdStatus.brands_md_target, mdGoalPct, brandMdCalc)
+        : null,
+      urgentBrands: { total: urgentBrands.length, top: urgentBrands.slice(0, 5) },
+      topSubas: topBrands.slice(0, 5),
+      topBajas: bottomBrands.slice(0, 5),
     }
-  }, [activeKamInfo, latestWeek, lastWeekVsPrev, lastMdVsPrev, lastTrafficVsPrev, brandMdStatus, brandMdCalc, topBrands, bottomBrands])
+  }, [activeKamInfo, latestWeek, lastWeekVsPrev, lastMdVsPrev, lastTrafficVsPrev, conversionMinuta, brandMdStatus, brandMdCalc, mdGoalPct, urgentBrands, topBrands, bottomBrands])
 
   // Exportar Resumen Ejecutivo: abre un modal con la tarjeta y la convierte a
   // PNG con html-to-image (recorta el DOM del ref a una imagen). El botón "Abrir
@@ -1058,6 +1199,7 @@ export default function KamDashboard({ data }) {
   // diseño de Canva sin una integración OAuth registrada del lado de Canva.
   const [showResumenModal, setShowResumenModal] = useState(false)
   const [resumenExportStatus, setResumenExportStatus] = useState(null)
+  const [resumenDocStatus, setResumenDocStatus] = useState(null)
   const resumenCardRef = useRef(null)
 
   const handleDownloadResumenPng = useCallback(async () => {
@@ -1077,6 +1219,35 @@ export default function KamDashboard({ data }) {
     }
   }, [kamActive, latestWeek])
 
+  // Copiar para Doc: arma el mismo contenido de la tarjeta como HTML
+  // formateado (negrita/colores/viñetas) + texto plano de respaldo, y lo
+  // manda al portapapeles — Google Docs lo interpreta al pegar (Ctrl+V).
+  // Queda pendiente conectar esto directo a la API de Docs (vía OAuth con
+  // la cuenta @rappi.com) más adelante; por ahora el paso de pegar es manual
+  // porque el Workspace de Rappi bloquea compartir el Doc con el service
+  // account externo que usa el resto de la app.
+  const handleCopyResumenForDoc = useCallback(async () => {
+    if (!resumenEjecutivo) return
+    setResumenDocStatus('loading')
+    try {
+      const { html, text } = buildResumenClipboardContent(resumenEjecutivo)
+      if (navigator.clipboard && typeof window.ClipboardItem === 'function') {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([text], { type: 'text/plain' }),
+          }),
+        ])
+      } else {
+        await navigator.clipboard.writeText(text)
+      }
+      setResumenDocStatus({ type: 'success', message: '✅ Copiado — pegalo en tu Doc con Ctrl+V.' })
+    } catch (err) {
+      console.error('❌ Error copiando el resumen:', err)
+      setResumenDocStatus({ type: 'error', message: 'No se pudo copiar. Probá de nuevo.' })
+    }
+  }, [resumenEjecutivo])
+
   return (
     <div className="w-full">
       {/* RANKING: posición de cada KAM según % de Brands with Markdown cumplido,
@@ -1087,9 +1258,14 @@ export default function KamDashboard({ data }) {
         <div className="ranking-card fade-in">
           <div className="table-header-row">
             <div className="ranking-title">🏅 Rankings Markdown</div>
-            {/* Importar Excel vive acá (y no en Brands with Markdown) porque la
-                importación cruza el archivo entero contra todos los KAMs de una,
-                no es una acción por KAM individual. */}
+          </div>
+
+          {/* Importar Excel / Importar Compensation viven lógicamente acá (y no
+              en Brands with Markdown) porque cruzan el archivo entero contra
+              todos los KAMs de una, no son una acción por KAM individual — pero
+              se portan (React portal) al header, a la izquierda del logo de
+              Rappi, en vez de renderizarse en el ranking. */}
+          {importActionsHost && createPortal(
             <div className="md-import">
               <input
                 ref={mdImportInputRef}
@@ -1124,8 +1300,9 @@ export default function KamDashboard({ data }) {
               >
                 📥 Importar Compensation
               </button>
-            </div>
-          </div>
+            </div>,
+            importActionsHost
+          )}
 
           {mdImportStatus && (
             <div className={`md-import-status md-import-status-${mdImportStatus.type}`}>
@@ -1190,7 +1367,7 @@ export default function KamDashboard({ data }) {
             <button
               type="button"
               className="export-resumen-btn"
-              onClick={() => setShowResumenModal(true)}
+              onClick={() => { setResumenDocStatus(null); setShowResumenModal(true) }}
             >
               📤 Exportar Resumen
             </button>
@@ -1808,7 +1985,9 @@ export default function KamDashboard({ data }) {
                 <div className="resumen-card-brand">📊 Rappi · Resumen Semanal</div>
                 <div className="resumen-card-kam">{resumenEjecutivo.kam.nombre}</div>
                 <div className="resumen-card-meta">
-                  Kam de {resumenEjecutivo.kam.region} · {resumenEjecutivo.kam.brandCount} brands · Semana del {resumenEjecutivo.semana}
+                  Kam de {resumenEjecutivo.kam.region} · {resumenEjecutivo.kam.brandCount} brands
+                  {' '}· Semana del {resumenEjecutivo.semana}
+                  {resumenEjecutivo.semanaAnterior && ` (vs. ${resumenEjecutivo.semanaAnterior})`}
                 </div>
               </div>
 
@@ -1828,7 +2007,23 @@ export default function KamDashboard({ data }) {
                   <div className="resumen-stat-value">{resumenEjecutivo.trafico.value.toLocaleString()}</div>
                   {resumenEjecutivo.trafico.diff && <DiffCell value={resumenEjecutivo.trafico.diff.pct} decimals={1} suffix="%" />}
                 </div>
+                <div className="resumen-stat">
+                  <div className="resumen-stat-label">🎯 Conversión</div>
+                  <div className="resumen-stat-value">
+                    {resumenEjecutivo.conversion ? `${resumenEjecutivo.conversion.value.toFixed(2)}%` : '—'}
+                  </div>
+                  {resumenEjecutivo.conversion?.diff !== null && resumenEjecutivo.conversion?.diff !== undefined && (
+                    <DiffCell value={resumenEjecutivo.conversion.diff} decimals={2} suffix=" p.p." />
+                  )}
+                </div>
               </div>
+
+              {/* Lectura en texto de la semana (mismo texto que la Minuta Semanal
+                  del dashboard) para que la imagen se entienda sola, sin tener
+                  que volver a mirar los números de arriba. */}
+              {resumenEjecutivo.minutaText && (
+                <div className="resumen-insight">📝 {resumenEjecutivo.minutaText}</div>
+              )}
 
               {resumenEjecutivo.brandMd && (
                 <div className="resumen-md-row">
@@ -1839,6 +2034,28 @@ export default function KamDashboard({ data }) {
                       {' '}({resumenEjecutivo.brandMd.calc.achievedPct.toFixed(1)}% · {mdStatusFor(resumenEjecutivo.brandMd.calc.achievedPct).label})
                     </span>
                   </div>
+                  {resumenEjecutivo.mdTargetText && (
+                    <div className="resumen-md-text">{resumenEjecutivo.mdTargetText}</div>
+                  )}
+                </div>
+              )}
+
+              {resumenEjecutivo.urgentBrands.total > 0 && (
+                <div className="resumen-urgent-row">
+                  <div className="resumen-urgent-title">
+                    🚨 Accionar Urgente · {resumenEjecutivo.urgentBrands.total} aliado{resumenEjecutivo.urgentBrands.total === 1 ? '' : 's'} cerca del target (70%-85% de MD Archie Final)
+                  </div>
+                  {resumenEjecutivo.urgentBrands.top.map((r) => (
+                    <div key={r.brand_key} className="resumen-urgent-line">
+                      <span>{r.brand_name}</span>
+                      <span
+                        className="resumen-urgent-pct"
+                        style={{ color: mdStatusFor(r.md_archie_final_pct).color }}
+                      >
+                        {r.md_archie_final_pct.toFixed(1)}%
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -1866,7 +2083,7 @@ export default function KamDashboard({ data }) {
               )}
 
               <div className="resumen-card-footer">
-                Generado el {new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                Generado el {new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })} · Dashboard KAMs Semanal
               </div>
             </div>
 
@@ -1881,6 +2098,15 @@ export default function KamDashboard({ data }) {
               </button>
               <button
                 type="button"
+                className="resumen-doc-btn"
+                onClick={handleCopyResumenForDoc}
+                disabled={resumenDocStatus === 'loading'}
+                title="Copia el resumen formateado (negrita, colores, viñetas) para pegarlo con Ctrl+V en tu Google Doc."
+              >
+                {resumenDocStatus === 'loading' ? 'Copiando...' : '📋 Copiar para Doc'}
+              </button>
+              <button
+                type="button"
                 className="resumen-canva-btn"
                 disabled
                 title="Próximamente: requiere conectar una app de Canva Developer (Client ID/Secret) para importar el diseño automáticamente a tu cuenta de Canva."
@@ -1890,6 +2116,14 @@ export default function KamDashboard({ data }) {
             </div>
             {resumenExportStatus === 'error' && (
               <div className="resumen-export-error">No se pudo generar la imagen. Probá de nuevo.</div>
+            )}
+            {resumenDocStatus && resumenDocStatus.type && (
+              <div className={resumenDocStatus.type === 'error' ? 'resumen-export-error' : 'resumen-export-success'}>
+                {resumenDocStatus.message}
+                {resumenDocStatus.type === 'success' && (
+                  <> · <a href={RESUMEN_DOC_URL} target="_blank" rel="noopener noreferrer" className="resumen-doc-link">Abrir el Doc ↗</a></>
+                )}
+              </div>
             )}
           </div>
         </div>

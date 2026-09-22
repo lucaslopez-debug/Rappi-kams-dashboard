@@ -94,6 +94,18 @@ body {
   color: var(--text-light);
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.header-import-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .header-logo {
   height: 60px;
   object-fit: contain;
@@ -424,11 +436,13 @@ body {
   margin-bottom: 0;
 }
 
-/* Importar Excel + Importar Compensation apilados, alineados a la derecha */
+/* Importar Excel + Importar Compensation: viven acá con este nombre de clase
+   por historia, pero el markup se porta (React portal) al header, junto al
+   logo de Rappi — de ahí el layout horizontal. */
 .md-import {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-direction: row;
+  align-items: center;
   gap: 8px;
 }
 
@@ -693,7 +707,7 @@ body {
   border-radius: 16px;
   border: 1px solid var(--border-gray);
   padding: 20px;
-  max-width: 480px;
+  max-width: 560px;
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
@@ -766,18 +780,18 @@ body {
 }
 
 .resumen-stats-row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 18px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .resumen-stat {
-  flex: 1;
   text-align: center;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-gray);
   border-radius: 10px;
-  padding: 12px 8px;
+  padding: 10px 6px;
 }
 
 .resumen-stat-label {
@@ -787,10 +801,23 @@ body {
 }
 
 .resumen-stat-value {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 800;
   color: var(--text-dark);
   margin-bottom: 2px;
+}
+
+/* Lectura en texto de la semana (minuta), para que la imagen se entienda
+   sola sin tener que interpretar los números de arriba. */
+.resumen-insight {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-light);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-gray);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
 }
 
 .resumen-md-row {
@@ -812,6 +839,51 @@ body {
   font-size: 14px;
   font-weight: 700;
   color: var(--text-dark);
+}
+
+.resumen-md-text {
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-light);
+  margin-top: 6px;
+}
+
+/* Accionar Urgente: mismo lenguaje visual que las tablas de top/bottom
+   (líneas con borde inferior), para que se lea como una sección más de la
+   tarjeta y no como un agregado suelto. */
+.resumen-urgent-row {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-gray);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 18px;
+}
+
+.resumen-urgent-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-light);
+  margin-bottom: 8px;
+}
+
+.resumen-urgent-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dark);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-gray);
+}
+
+.resumen-urgent-line:last-child {
+  border-bottom: none;
+}
+
+.resumen-urgent-pct {
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .resumen-brands-row {
@@ -840,6 +912,10 @@ body {
   color: var(--text-dark);
   padding: 4px 0;
   border-bottom: 1px solid var(--border-gray);
+}
+
+.resumen-brand-line:last-child {
+  border-bottom: none;
 }
 
 .resumen-brand-line span:first-child {
@@ -872,12 +948,14 @@ body {
 
 .resumen-modal-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 18px;
 }
 
-.resumen-download-btn {
-  flex: 1;
+.resumen-download-btn,
+.resumen-doc-btn {
+  flex: 1 1 150px;
   padding: 12px;
   border-radius: 10px;
   border: none;
@@ -889,17 +967,24 @@ body {
   transition: opacity 0.2s ease;
 }
 
-.resumen-download-btn:hover:not(:disabled) {
+.resumen-doc-btn {
+  background: linear-gradient(90deg, #4285F4 0%, #1A73E8 100%);
+  color: #FFFFFF;
+}
+
+.resumen-download-btn:hover:not(:disabled),
+.resumen-doc-btn:hover:not(:disabled) {
   opacity: 0.9;
 }
 
-.resumen-download-btn:disabled {
+.resumen-download-btn:disabled,
+.resumen-doc-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 .resumen-canva-btn {
-  flex: 1;
+  flex: 1 1 150px;
   padding: 12px;
   border-radius: 10px;
   border: 2px solid var(--border-gray);
@@ -915,6 +1000,19 @@ body {
   font-size: 12px;
   color: var(--danger);
   text-align: center;
+}
+
+.resumen-export-success {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--success);
+  text-align: center;
+}
+
+.resumen-doc-link {
+  color: var(--success);
+  font-weight: 700;
+  text-decoration: underline;
 }
 
 /* Filter Group */
@@ -1461,6 +1559,24 @@ body {
     flex-direction: column;
     gap: 15px;
     padding: 15px;
+  }
+
+  .header-right {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .header-import-actions {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .resumen-stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .resumen-brands-row {
+    flex-direction: column;
   }
 
   .charts-grid {
