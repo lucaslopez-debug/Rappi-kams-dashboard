@@ -41,8 +41,6 @@ There is no test suite or linter configured in this project.
 
 **`KamDashboard.js`** owns essentially all dashboard logic — week selection, WoW % calculations, top/bottom-10 brand ranking, category filtering — as memoized derivations over the full `weeklyData` array passed down from `page.js` rather than via separate queries. Note it only ever operates on rows where `brand_name === 'TOTAL_KAM'` (the per-KAM aggregate written by the sync script); per-brand rows are read but not surfaced in the current UI except via the top/bottom brand tables. Valid week labels are hardcoded in a `fechaOrder` array (e.g. `'22 Jun'`) in two places in this file — extend that list when new weeks are added to the sheet.
 
-**Known stray/duplicate files** (not part of the active app, left over from earlier iterations — don't assume they're wired up): `app/layouts.js` (Next.js App Router only picks up `layout.js`) and `Scripts/app/file.js` (an older version of `app/page.js` that instantiates its own Supabase client inline instead of using `lib/supabase.js`).
-
 ## Environment variables
 
 Required in `.env.local` (see `test.js` for a connectivity check against these):
