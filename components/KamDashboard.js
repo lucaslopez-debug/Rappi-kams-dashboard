@@ -319,6 +319,24 @@ function findMdImportColumnIndex(headerRow, aliases) {
   return -1
 }
 
+// Igual que findMdImportColumnIndex pero más tolerante: si no hay ningún
+// encabezado que coincida EXACTO con un alias, prueba de nuevo buscando el
+// alias como substring (ej. alias "aliado" matchea "nombre del aliado").
+// Se usa solo para Availability, que es el import con menos certeza sobre
+// cómo viene nombrada la columna — los otros dos imports siguen con match
+// exacto para no arriesgar falsos positivos en algo que ya funciona.
+function findColumnIndexFuzzy(headerRow, aliases) {
+  const exact = findMdImportColumnIndex(headerRow, aliases)
+  if (exact !== -1) return exact
+
+  const normalized = headerRow.map(normalizeHeaderCell)
+  for (const alias of aliases) {
+    const idx = normalized.findIndex((h) => h.includes(alias))
+    if (idx !== -1) return idx
+  }
+  return -1
+}
+
 // Importación de Excel para Accionar Urgente ("Compensation"): a diferencia de
 // Brands with Markdown (un solo % agregado por KAM), este archivo es un reporte
 // jerárquico tipo pivot exportado a plano: el email del KAM (columna "OWNER")
@@ -366,6 +384,71 @@ const RESUMEN_DOC_URL = 'https://docs.google.com/document/d/1yGBOOXnDTgdCZ0ysSHY
 const MONTH_ABBR_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const MONTH_NAMES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 const MD_DROP_EPSILON = 0.01
+
+// Importación de Excel para Availability: a diferencia de Compensation/Brands
+// with Markdown (un valor fijo por aliado), este archivo trae UNA COLUMNA POR
+// FECHA (una semana cada una) — hay que detectar cuáles encabezados son
+// fechas, quedarse con las dos más recientes (última semana vs. la anterior)
+// y sacar el % de availability de esas dos columnas para cada aliado. El
+// archivo NO trae KAM ni email — solo el nombre del aliado — así que el KAM
+// se resuelve cruzando ese nombre contra los aliados que weeklyData ya tiene
+// (de todos los KAMs), no contra un email.
+const AVAILABILITY_IMPORT_COLUMN_ALIASES = {
+  // Orden importa para el fallback "contains" de findColumnIndexFuzzy: los
+  // términos más específicos van primero, "nombre" a solas al final porque
+  // es el que más probable es que aparezca como substring de otra cosa.
+  brand: [
+    'aliado', 'brand', 'marca', 'restaurante', 'restaurant', 'partner', 'store',
+    'establecimiento', 'comercio', 'seller', 'brand_id_name', 'nombre comercial',
+    'nombre del aliado', 'nombre restaurante', 'nombre',
+  ],
+}
+
+function normalizeBrandNameKey(name) {
+  return String(name ?? '').toLowerCase().trim()
+}
+
+// Excel guarda fechas como número serial (días desde 1899-12-30) cuando la
+// celda no llega como objeto Date — cubrimos los dos casos, más un puñado de
+// formatos de texto por si el encabezado no está formateado como fecha real.
+function parseHeaderDateCell(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value
+
+  if (typeof value === 'number' && value > 20000 && value < 80000) {
+    // Epoch de Excel: 1899-12-30 (con el bug del año bisiesto 1900 incluido,
+    // que es como lo resuelve todo el ecosistema de hojas de cálculo).
+    const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30)
+    return new Date(EXCEL_EPOCH_MS + value * 86400000)
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    let match = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/)
+    if (match) {
+      let [, d, m, y] = match
+      if (y.length === 2) y = `20${y}`
+      const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)))
+      if (!Number.isNaN(date.getTime())) return date
+    }
+    match = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+    if (match) {
+      const [, y, m, d] = match
+      const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)))
+      if (!Number.isNaN(date.getTime())) return date
+    }
+    match = trimmed.match(/^(\d{1,2})\s+([A-Za-zÁ-ú]{3,})/)
+    if (match) {
+      const monthIdx = MONTHS[match[2].slice(0, 3)]
+      if (monthIdx !== undefined) return new Date(Date.UTC(new Date().getFullYear(), monthIdx, Number(match[1])))
+    }
+  }
+
+  return null
+}
+
+function formatDateAsWeekLabel(date) {
+  return `${String(date.getUTCDate()).padStart(2, '0')} ${MONTH_ABBR_EN[date.getUTCMonth()]}`
+}
 
 // Acepta el % como "78%", "78" o "0.78" (fracción) — normaliza todo a puntos
 // porcentuales (78). Si el texto trae el símbolo "%" explícito, el número ya
@@ -474,6 +557,24 @@ function DiffCell({ value, decimals = 1, suffix = '%' }) {
     <span style={{ color, fontWeight: 700 }}>
       {value > 0 ? '+' : ''}{value.toFixed(decimals)}{suffix}
     </span>
+  )
+}
+
+// Celda de Availability (última semana vs. la anterior) para el final de las
+// tablas de Top/Bottom/Middle/Accionar Urgente/Posibles churn. "availability"
+// es la fila de brand_availability_status ya resuelta por nombre, o
+// undefined si ese aliado no está en el último import.
+function AvailabilityCell({ availability }) {
+  if (!availability || availability.availability_current === null || availability.availability_current === undefined) {
+    return <span style={{ color: '#B0B0B0' }}>—</span>
+  }
+  const hasPrevious = availability.availability_previous !== null && availability.availability_previous !== undefined
+  const diff = hasPrevious ? availability.availability_current - availability.availability_previous : null
+  return (
+    <>
+      {availability.availability_current.toFixed(1)}%
+      {diff !== null && <><br /><DiffCell value={diff} decimals={1} suffix=" p.p." /></>}
+    </>
   )
 }
 
@@ -781,6 +882,41 @@ export default function KamDashboard({ data }) {
       .sort((a, b) => b.md_archie_final_pct - a.md_archie_final_pct)
   }, [compensationRows])
 
+  // Availability por aliado (cargado desde el import de Availability): última
+  // semana vs. la anterior, tal como vienen esas dos columnas en el archivo.
+  // Igual que Compensation, es un snapshot por aliado (no una serie semanal
+  // que arma la app) — cada import lo pisa con lo que traiga el archivo nuevo.
+  const [availabilityRows, setAvailabilityRows] = useState([])
+
+  useEffect(() => {
+    if (!kamActive) return
+    let cancelled = false
+    supabase
+      .from('brand_availability_status')
+      .select('brand_key, brand_name, availability_current, availability_previous, current_week, previous_week, updated_at')
+      .eq('kam_id', kamActive.id)
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) { console.error('❌ Error cargando Availability:', error); return }
+        setAvailabilityRows(data || [])
+      })
+    return () => { cancelled = true }
+  }, [kamActive])
+
+  // Las tablas de Top/Bottom/Middle/Churn identifican brands por brand_id de
+  // weekly_data, y Accionar Urgente por el brand_key del import de
+  // Compensation — dos esquemas de ID distintos que no necesariamente
+  // coinciden con el del archivo de Availability. Por eso el cruce para
+  // MOSTRAR el dato en esas tablas se hace por nombre normalizado, que es lo
+  // único que las cuatro fuentes comparten de forma confiable.
+  const availabilityByBrandName = useMemo(() => {
+    const map = new Map()
+    availabilityRows.forEach((r) => {
+      if (r.brand_name) map.set(normalizeBrandNameKey(r.brand_name), r)
+    })
+    return map
+  }, [availabilityRows])
+
   // Ranking de Brands with Markdown de TODOS los KAMs (no solo el activo), para
   // el bloque fijo de arriba. A diferencia de brandMdStatus (que trae solo el
   // KAM activo), acá se traen todos de una — se recarga cada vez que cambia el
@@ -1058,6 +1194,173 @@ export default function KamDashboard({ data }) {
     }
   }
 
+  // Importar Excel de Availability: a diferencia de Compensation/Brands with
+  // Markdown, este archivo trae una columna por semana (se detectan las
+  // fechas de los encabezados y se toman las dos más recientes) y no trae
+  // KAM/email — el aliado se cruza por nombre contra weeklyData para saber
+  // a qué KAM pertenece.
+  const availabilityImportInputRef = useRef(null)
+  const [availabilityImportStatus, setAvailabilityImportStatus] = useState(null)
+
+  const handleAvailabilityImportClick = () => availabilityImportInputRef.current?.click()
+
+  const handleAvailabilityImportFile = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setAvailabilityImportStatus({ type: 'loading', message: 'Leyendo archivo...' })
+
+    try {
+      const XLSX = await import('xlsx')
+      const buffer = await file.arrayBuffer()
+      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
+      const sheet = workbook.Sheets[workbook.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null })
+
+      if (!rows.length) throw new Error('El archivo está vacío.')
+
+      // Este archivo es un pivot con VARIAS filas de encabezado apiladas (Mes
+      // → Fecha → Métrica) en vez de una sola fila: algo como
+      //   fila 0: "MONTH" | "August" (merged) | "September" (merged) | ...
+      //   fila 1: "...Hierarchy" | 8/10 | 8/17 | 8/24 | 8/31 | 9/7 | 9/14 | ...
+      //   fila 2: "BRAND_NAME STORE_NAME" | Availability | Configured Hours | Available Hours | Availability | ...
+      // y recién de la fila 3 en adelante vienen los datos. Por eso primero
+      // hay que encontrar CUÁL fila es la de "Availability" (la real fila de
+      // encabezados de columna), en vez de asumir que es la fila 0.
+      let labelRowIdx = -1
+      let labelRow = null
+      for (let i = 0; i < Math.min(rows.length, 15); i++) {
+        const row = rows[i] || []
+        const hasAvailability = row.some((cell) => normalizeHeaderCell(cell) === 'availability')
+        if (hasAvailability) { labelRowIdx = i; labelRow = row; break }
+      }
+
+      if (labelRowIdx === -1) {
+        const firstRows = rows.slice(0, 3).map((r) => (r || []).map((h) => String(h ?? '').trim()).filter(Boolean).join(' | ')).filter(Boolean).join('  /  ')
+        throw new Error(`No encontré ninguna columna "Availability" en el archivo. Primeras filas que sí leí: ${firstRows || '(vinieron vacías)'}`)
+      }
+
+      const brandIdx = findColumnIndexFuzzy(labelRow, AVAILABILITY_IMPORT_COLUMN_ALIASES.brand)
+
+      if (brandIdx === -1) {
+        const headerPreview = labelRow.map((h) => String(h ?? '').trim()).filter(Boolean).join(' | ')
+        throw new Error(`No encontré la columna del nombre del aliado (fila de encabezados: ${headerPreview}).`)
+      }
+
+      // Una columna "Availability" por semana. La fecha de cada una está en
+      // alguna fila POR ENCIMA de labelRow (fusionada en Excel, por eso puede
+      // no estar exactamente en la misma columna — se prueba esa columna y un
+      // par a la izquierda, que es hacia donde queda el valor de una celda
+      // combinada).
+      const findDateForColumn = (colIdx) => {
+        for (let r = labelRowIdx - 1; r >= 0; r--) {
+          for (let c = colIdx; c >= Math.max(0, colIdx - 2); c--) {
+            const d = parseHeaderDateCell(rows[r]?.[c])
+            if (d) return d
+          }
+        }
+        return null
+      }
+
+      const dateCols = labelRow
+        .map((cell, idx) => ({ idx, isAvailability: normalizeHeaderCell(cell) === 'availability' }))
+        .filter((c) => c.isAvailability)
+        .map((c) => ({ idx: c.idx, date: findDateForColumn(c.idx) }))
+        .filter((c) => c.date !== null)
+        .sort((a, b) => b.date - a.date)
+
+      if (dateCols.length < 2) {
+        throw new Error('Encontré la columna "Availability" pero no pude sacarle la fecha a al menos dos de esas columnas (semana actual vs. anterior). Revisá el archivo.')
+      }
+
+      const [currentCol, previousCol] = dateCols
+      const currentWeekLabel = formatDateAsWeekLabel(currentCol.date)
+      const previousWeekLabel = formatDateAsWeekLabel(previousCol.date)
+
+      // El archivo no trae KAM ni email — solo el nombre del aliado — así que
+      // el KAM se resuelve cruzando ese nombre contra los aliados que
+      // weeklyData ya tiene de TODOS los KAMs (no solo el activo). Se guarda
+      // también el brand_id "real" de weekly_data cuando existe, en vez del
+      // que traiga el archivo de Availability, para que brand_key quede en
+      // el mismo esquema de ID que el resto de la app.
+      const brandNameToKam = new Map()
+      ;(weeklyData || []).forEach((row) => {
+        if (!row.brand_name || row.brand_name === 'TOTAL_KAM') return
+        const key = normalizeBrandNameKey(row.brand_name)
+        if (!brandNameToKam.has(key)) {
+          brandNameToKam.set(key, { kam_id: row.kam_id, brand_id: row.brand_id })
+        }
+      })
+
+      const updatedAt = new Date().toISOString()
+      const updates = []
+      const unmatchedBrands = new Set()
+
+      for (let i = labelRowIdx + 1; i < rows.length; i++) {
+        const row = rows[i]
+        if (!row || row.every((cell) => cell === null || cell === '')) continue
+
+        // Cada fila viene como "Nombre del aliado Total" (fila de subtotal
+        // del pivot, una por aliado) — se saca el " Total" del final antes de
+        // parsear el nombre.
+        const rawBrandCell = row[brandIdx]
+        const cleanedBrandCell = typeof rawBrandCell === 'string'
+          ? rawBrandCell.replace(/\s+total$/i, '').trim()
+          : rawBrandCell
+        const parsedBrand = parseBrandIdName(cleanedBrandCell)
+        if (!parsedBrand || parsedBrand.name.toLowerCase() === 'total') continue
+
+        const match = brandNameToKam.get(normalizeBrandNameKey(parsedBrand.name))
+        if (!match) {
+          unmatchedBrands.add(parsedBrand.name)
+          continue
+        }
+
+        const availabilityCurrent = parsePercentCell(row[currentCol.idx])
+        if (availabilityCurrent === null) continue
+        const availabilityPrevious = parsePercentCell(row[previousCol.idx])
+
+        updates.push({
+          kam_id: match.kam_id,
+          brand_key: match.brand_id || parsedBrand.key,
+          brand_name: parsedBrand.name,
+          availability_current: availabilityCurrent,
+          availability_previous: availabilityPrevious,
+          current_week: currentWeekLabel,
+          previous_week: previousWeekLabel,
+          updated_at: updatedAt,
+        })
+      }
+
+      if (updates.length === 0) {
+        throw new Error('Ningún aliado del archivo coincidió con los aliados que ya tiene la app. Revisá que el nombre esté escrito igual.')
+      }
+
+      const { error } = await supabase
+        .from('brand_availability_status')
+        .upsert(updates, { onConflict: 'kam_id,brand_key' })
+
+      if (error) throw error
+
+      if (kamActive) {
+        const ownUpdates = updates.filter((u) => u.kam_id === kamActive.id)
+        if (ownUpdates.length > 0) setAvailabilityRows(ownUpdates)
+      }
+
+      const uniqueKams = new Set(updates.map((u) => u.kam_id)).size
+      let message = `✅ ${updates.length} aliado${updates.length === 1 ? '' : 's'} actualizado${updates.length === 1 ? '' : 's'} en ${uniqueKams} KAM${uniqueKams === 1 ? '' : 's'} (${previousWeekLabel} → ${currentWeekLabel}).`
+      if (unmatchedBrands.size > 0) {
+        const preview = [...unmatchedBrands].slice(0, 8).join(', ')
+        const rest = unmatchedBrands.size > 8 ? ` y ${unmatchedBrands.size - 8} más` : ''
+        message += ` ${unmatchedBrands.size} aliado${unmatchedBrands.size === 1 ? '' : 's'} del archivo no coincidió con ninguno existente (${preview}${rest}).`
+      }
+      setAvailabilityImportStatus({ type: 'success', message })
+    } catch (err) {
+      setAvailabilityImportStatus({ type: 'error', message: err.message || 'No se pudo importar el archivo.' })
+    }
+  }
+
   // Filtrar SOLO TOTAL_KAM del KAM activo (para KPIs y gráficos agregados)
   const kamDataFiltered = useMemo(() => {
     if (!weeklyData || !kamActive) return []
@@ -1280,6 +1583,68 @@ export default function KamDashboard({ data }) {
 
   const sortedMiddleBrands = useMemo(() => sortBrandRows(middleBrands, middleSort), [middleBrands, middleSort])
 
+  // Posibles churn: aliados de ESTE KAM con 0 órdenes en las últimas 2
+  // semanas o más, contando hacia atrás desde la semana más reciente sin
+  // cortes (si tuvo un pedido la semana pasada, no cuenta aunque haya tenido
+  // semanas en 0 antes de esa). Solo entran aliados que en algún momento de
+  // esta misma ventana tuvieron órdenes — si nunca tuvo, no es "churn", es
+  // que nunca arrancó.
+  const possibleChurnBrands = useMemo(() => {
+    if (!kamActive || weeklyMetrics.length === 0 || kamBrandRows.length === 0) return []
+
+    // Semanas conocidas de este KAM (misma ventana que el resto del
+    // dashboard), descartando labels rotos tipo "01–19 Jul" para que no se
+    // cuelen como si fueran "la semana más reciente".
+    const weeksAsc = weeklyMetrics.map((w) => w.semana).filter((w) => parseWeekLabel(w) !== null)
+    if (weeksAsc.length === 0) return []
+    const weeksSet = new Set(weeksAsc)
+
+    const ordersByBrandWeek = new Map() // brandKey -> Map(semana -> orders)
+    const brandNames = new Map()
+    const everHadOrders = new Set()
+
+    kamBrandRows.forEach((row) => {
+      const week = row.semana_fecha?.trim()
+      if (!week || !weeksSet.has(week)) return
+      const key = row.brand_id || row.brand_name
+      if (!ordersByBrandWeek.has(key)) ordersByBrandWeek.set(key, new Map())
+      ordersByBrandWeek.get(key).set(week, row.orders || 0)
+      brandNames.set(key, row.brand_name)
+      if ((row.orders || 0) > 0) everHadOrders.add(key)
+    })
+
+    const results = []
+    ordersByBrandWeek.forEach((weekMap, key) => {
+      if (!everHadOrders.has(key)) return
+
+      let streak = 0
+      let lastOrderWeek = null
+      let lastOrderValue = 0
+      for (let i = weeksAsc.length - 1; i >= 0; i--) {
+        const week = weeksAsc[i]
+        const orders = weekMap.get(week) || 0
+        if (orders > 0) {
+          lastOrderWeek = week
+          lastOrderValue = orders
+          break
+        }
+        streak++
+      }
+
+      if (streak >= 2) {
+        results.push({
+          brand_key: key,
+          brand_name: brandNames.get(key),
+          weeksZero: streak,
+          lastOrderWeek,
+          lastOrderValue,
+        })
+      }
+    })
+
+    return results.sort((a, b) => b.weeksZero - a.weeksZero)
+  }, [kamActive, kamBrandRows, weeklyMetrics])
+
   // Historial de las últimas 8 semanas de la brand sobre la que está el cursor
   const hoverBrandHistory = useMemo(() => {
     if (!hoverBrand) return []
@@ -1430,6 +1795,25 @@ export default function KamDashboard({ data }) {
               Rappi, en vez de renderizarse en el ranking. */}
           {importActionsHost && createPortal(
             <div className="md-import">
+              {/* Importar Availability va primero: trae, por aliado, el %
+                  de availability de la última semana vs. la anterior, que
+                  después se muestra al final de las tablas de Top/Bottom,
+                  Middle, Accionar Urgente y Posibles churn. */}
+              <input
+                ref={availabilityImportInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleAvailabilityImportFile}
+                style={{ display: 'none' }}
+              />
+              <button
+                type="button"
+                className="md-import-btn"
+                onClick={handleAvailabilityImportClick}
+                disabled={availabilityImportStatus?.type === 'loading'}
+              >
+                📥 Importar Availability
+              </button>
               <input
                 ref={mdImportInputRef}
                 type="file"
@@ -1467,6 +1851,11 @@ export default function KamDashboard({ data }) {
             importActionsHost
           )}
 
+          {availabilityImportStatus && (
+            <div className={`md-import-status md-import-status-${availabilityImportStatus.type}`}>
+              {availabilityImportStatus.message}
+            </div>
+          )}
           {mdImportStatus && (
             <div className={`md-import-status md-import-status-${mdImportStatus.type}`}>
               {mdImportStatus.message}
@@ -1931,7 +2320,7 @@ export default function KamDashboard({ data }) {
         </div>
       )}
 
-      {/* SUB-TABS: Top and Bottom / Middle / Accionar Urgente / Accionables */}
+      {/* SUB-TABS: Top and Bottom / Middle / Accionar Urgente / Posibles churn / Accionables */}
       <div className="subtabs-wrapper fade-in">
         <button
           className={`subtab ${activeSubTab === 'topbottom' ? 'active' : ''}`}
@@ -1950,6 +2339,13 @@ export default function KamDashboard({ data }) {
           onClick={() => setActiveSubTab('urgente')}
         >
           🚨 Accionar urgente
+        </button>
+        <button
+          className={`subtab ${activeSubTab === 'churn' ? 'active' : ''} ${possibleChurnBrands.length > 0 ? 'subtab-blink' : ''}`}
+          onClick={() => setActiveSubTab('churn')}
+        >
+          🔻 Posibles churn
+          {possibleChurnBrands.length > 0 && <span className="subtab-badge">{possibleChurnBrands.length}</span>}
         </button>
         <button
           className={`subtab ${activeSubTab === 'accionables' ? 'active' : ''}`}
@@ -1992,6 +2388,7 @@ export default function KamDashboard({ data }) {
                   <SortableTh label="Tráfico LW" sortKey="traficoLW" sort={topSort} onSort={handleTopSort} />
                   <SortableTh label="Tráfico" sortKey="trafico" sort={topSort} onSort={handleTopSort} />
                   <SortableTh label="Δ Tráfico vs LW" sortKey="traficoDiff" sort={topSort} onSort={handleTopSort} />
+                  <th>Availability</th>
                 </tr>
               </thead>
               <tbody>
@@ -2019,6 +2416,7 @@ export default function KamDashboard({ data }) {
                     <td>{brand.traficoLW.toLocaleString()}</td>
                     <td>{brand.trafico.toLocaleString()}</td>
                     <td><DiffCell value={brand.traficoDiff} decimals={0} suffix="" /></td>
+                    <td><AvailabilityCell availability={availabilityByBrandName.get(normalizeBrandNameKey(brand.brand_name))} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -2047,6 +2445,7 @@ export default function KamDashboard({ data }) {
                   <SortableTh label="Tráfico LW" sortKey="traficoLW" sort={bottomSort} onSort={handleBottomSort} />
                   <SortableTh label="Tráfico" sortKey="trafico" sort={bottomSort} onSort={handleBottomSort} />
                   <SortableTh label="Δ Tráfico vs LW" sortKey="traficoDiff" sort={bottomSort} onSort={handleBottomSort} />
+                  <th>Availability</th>
                 </tr>
               </thead>
               <tbody>
@@ -2074,6 +2473,7 @@ export default function KamDashboard({ data }) {
                     <td>{brand.traficoLW.toLocaleString()}</td>
                     <td>{brand.trafico.toLocaleString()}</td>
                     <td><DiffCell value={brand.traficoDiff} decimals={0} suffix="" /></td>
+                    <td><AvailabilityCell availability={availabilityByBrandName.get(normalizeBrandNameKey(brand.brand_name))} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -2113,6 +2513,7 @@ export default function KamDashboard({ data }) {
                       <SortableTh label="Tráfico LW" sortKey="traficoLW" sort={middleSort} onSort={handleMiddleSort} />
                       <SortableTh label="Tráfico" sortKey="trafico" sort={middleSort} onSort={handleMiddleSort} />
                       <SortableTh label="Δ Tráfico vs LW" sortKey="traficoDiff" sort={middleSort} onSort={handleMiddleSort} />
+                      <th>Availability</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2139,6 +2540,7 @@ export default function KamDashboard({ data }) {
                         <td>{brand.traficoLW !== null ? brand.traficoLW.toLocaleString() : '—'}</td>
                         <td>{brand.trafico.toLocaleString()}</td>
                         <td><DiffCell value={brand.traficoDiff} decimals={0} suffix="" /></td>
+                        <td><AvailabilityCell availability={availabilityByBrandName.get(normalizeBrandNameKey(brand.brand_name))} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -2181,6 +2583,7 @@ export default function KamDashboard({ data }) {
                       <th>Aliado</th>
                       <th>% MD Archie Final</th>
                       <th>Estado</th>
+                      <th>Availability</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2195,6 +2598,7 @@ export default function KamDashboard({ data }) {
                               {atEdge ? '✅ Al borde del target' : '🔸 Pronto a entrar en target'}
                             </span>
                           </td>
+                          <td><AvailabilityCell availability={availabilityByBrandName.get(normalizeBrandNameKey(brand.brand_name))} /></td>
                         </tr>
                       )
                     })}
@@ -2253,6 +2657,57 @@ export default function KamDashboard({ data }) {
             )}
           </div>
         </div>
+      )}
+
+      {/* POSIBLES CHURN - aliados con 0 órdenes 2 semanas seguidas o más */}
+      {activeSubTab === 'churn' && (
+        <>
+          <div className="trend-description fade-in">
+            <span className="trend-description-icon">🔻</span>
+            <div>
+              <div className="trend-description-title">Posibles churn — aliados sin órdenes hace 2 semanas o más</div>
+              <div className="trend-description-text">
+                Aliados que en algún momento reciente tuvieron pedidos y ahora llevan 2 semanas seguidas o más en 0 órdenes, sin cortes, contando desde la última semana cerrada hacia atrás. Son los que más urge revisar — puede ser un problema operativo (pausado, sin stock, dado de baja) más que de markdown.
+              </div>
+            </div>
+          </div>
+
+          {possibleChurnBrands.length > 0 ? (
+            <div className="table-card compact fade-in">
+              <div className="table-title">🔻 Aliados con 0 órdenes hace 2+ semanas</div>
+              <div className="table-container">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Aliado</th>
+                      <th>Semanas seguidas en 0</th>
+                      <th>Última semana con órdenes</th>
+                      <th>Órdenes esa semana</th>
+                      <th>Availability</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {possibleChurnBrands.map((brand) => (
+                      <tr key={brand.brand_key}>
+                        <td><strong>{brand.brand_name}</strong></td>
+                        <td>
+                          <span className="urgent-status below">🔻 {brand.weeksZero} semana{brand.weeksZero === 1 ? '' : 's'}</span>
+                        </td>
+                        <td>{brand.lastOrderWeek || '—'}</td>
+                        <td>{brand.lastOrderValue.toLocaleString()}</td>
+                        <td><AvailabilityCell availability={availabilityByBrandName.get(normalizeBrandNameKey(brand.brand_name))} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="table-card compact fade-in no-data">
+              Ningún aliado de esta cartera lleva 2 semanas o más en 0 órdenes.
+            </div>
+          )}
+        </>
       )}
 
       {/* ACCIONABLES - pestaña dedicada 100% a cargar y hacer seguimiento de accionables */}

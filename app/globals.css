@@ -486,6 +486,48 @@ body {
   box-shadow: 0 4px 12px rgba(255, 82, 82, 0.3);
 }
 
+/* Posibles churn: parpadea mientras haya aliados en la lista, para que se
+   note como una alerta y no como una pestaña más — mismo lenguaje visual
+   (fuerte, rápido) que el botón de alerta del header. */
+.subtab-blink {
+  border-color: var(--danger);
+  animation: subtabBlink 0.9s ease-in-out infinite;
+}
+
+.subtab-blink.active {
+  animation: none;
+  background: var(--danger);
+  border-color: var(--danger);
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
+}
+
+@keyframes subtabBlink {
+  0%, 100% {
+    opacity: 1;
+    background: rgba(244, 67, 54, 0.12);
+  }
+  50% {
+    opacity: 0.55;
+    background: rgba(244, 67, 54, 0.35);
+  }
+}
+
+.subtab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: 20px;
+  background: var(--danger);
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
 /* Brands with Markdown */
 .table-header-row {
   display: flex;
