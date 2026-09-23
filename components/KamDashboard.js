@@ -568,12 +568,21 @@ function AvailabilityCell({ availability }) {
   if (!availability || availability.availability_current === null || availability.availability_current === undefined) {
     return <span style={{ color: '#B0B0B0' }}>—</span>
   }
+  const current = availability.availability_current
   const hasPrevious = availability.availability_previous !== null && availability.availability_previous !== undefined
-  const diff = hasPrevious ? availability.availability_current - availability.availability_previous : null
+  const previous = hasPrevious ? availability.availability_previous : null
+
+  // Semana anterior en blanco (color de texto normal de la tabla) con el
+  // valor real, y la última semana en verde/rojo según si subió o bajó
+  // contra esa semana anterior — sin mostrar la diferencia en sí.
+  let currentColor = 'var(--text-dark)'
+  if (previous !== null) currentColor = current > previous ? 'var(--success)' : current < previous ? 'var(--danger)' : 'var(--text-dark)'
+
   return (
     <>
-      {availability.availability_current.toFixed(1)}%
-      {diff !== null && <><br /><DiffCell value={diff} decimals={1} suffix=" p.p." /></>}
+      {previous !== null ? `${previous.toFixed(1)}%` : '—'}
+      <br />
+      <span style={{ color: currentColor, fontWeight: 700 }}>{current.toFixed(1)}%</span>
     </>
   )
 }
