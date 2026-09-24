@@ -66,15 +66,84 @@ body {
 /* Header */
 .header {
   background: linear-gradient(90deg, #1E1E1E 0%, #2A2A2A 100%);
-  padding: 20px 40px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  padding: 16px 40px 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   position: sticky;
   top: 0;
   z-index: 100;
   border-bottom: 2px solid var(--primary);
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+}
+
+/* Filtro de KAM (segunda fila del header, portado desde app/page.js) */
+.header-kam-list {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-gray);
+}
+
+.header-kam-tab {
+  padding: 12px 20px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-light);
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.header-kam-tab:hover {
+  color: var(--text-dark);
+  background: rgba(255, 193, 7, 0.1);
+}
+
+.header-kam-tab.active {
+  color: var(--secondary);
+  border-bottom-color: var(--secondary);
+}
+
+/* Secciones por KAM (Markdown / Tarjetas / ...) */
+.section-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  margin-bottom: 25px;
+  background: var(--light-gray);
+  border: 1px solid var(--border-gray);
+  border-radius: 12px;
+}
+
+.section-tab {
+  flex: 1;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-light);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.section-tab:hover {
+  color: var(--text-dark);
+  background: rgba(255, 193, 7, 0.08);
+}
+
+.section-tab.active {
+  background: var(--primary);
+  color: #0D0D0D;
 }
 
 .header-title {
@@ -542,65 +611,37 @@ body {
   margin-bottom: 0;
 }
 
-/* Importar Excel + Importar Compensation: viven acá con este nombre de clase
-   por historia, pero el markup se porta (React portal) al header, junto al
-   logo de Rappi — de ahí el layout horizontal. */
-.md-import {
+/* Estado de los datos sincronizados desde Snowflake (Brands with MD,
+   Compensation, Availability): el markup se porta (React portal) al header,
+   junto al logo de Rappi — un indicador por fuente, apilados. */
+.sync-status {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.sync-chip {
+  display: flex;
   align-items: center;
   gap: 8px;
-}
-
-/* Color del logo de Rappi (var(--secondary)) para diferenciar las acciones
-   de Importar/Exportar del resto de los botones (que usan el amarillo del
-   dashboard) — así se distinguen de un vistazo. */
-.md-import-btn {
-  padding: 8px 16px;
-  border-radius: 8px;
-  border: 2px solid var(--secondary);
-  background: var(--secondary);
-  color: #FFFFFF;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-}
-
-.md-import-btn:hover:not(:disabled) {
-  background: #FF3B3B;
-  border-color: #FF3B3B;
-}
-
-.md-import-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.md-import-status {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 8px 12px;
-  border-radius: 8px;
-  margin-bottom: 16px;
-}
-
-.md-import-status-loading {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-gray);
   color: var(--text-light);
-  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
-.md-import-status-success {
-  color: var(--success);
-  background: rgba(76, 175, 80, 0.1);
+.sync-chip-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
 }
-
-.md-import-status-error {
-  color: var(--danger);
-  background: rgba(244, 67, 54, 0.1);
-}
-
 
 .md-target-layout {
   display: flex;
@@ -1838,9 +1879,18 @@ body {
 /* Responsive */
 @media (max-width: 768px) {
   .header {
+    padding: 15px 15px 0;
+  }
+
+  .header-top {
     flex-direction: column;
     gap: 15px;
-    padding: 15px;
+  }
+
+  .header-kam-list {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
   }
 
   .header-right {
@@ -1893,4 +1943,48 @@ body {
   .container {
     padding: 15px;
   }
+}
+/* Avances semanales: etiqueta cuando la foto más reciente es de martes a
+   viernes (avance parcial de la semana en curso) */
+.avances-partial {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(255, 193, 7, 0.15);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* Avances and warnings: resumen y etiquetas de los warnings de availability */
+.warnings-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.warning-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.warning-new-zero {
+  background: rgba(244, 67, 54, 0.18);
+  color: #FF6B5E;
+}
+
+.warning-drop {
+  background: rgba(255, 152, 0, 0.18);
+  color: #FFB74D;
+}
+
+.warning-zero {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-light);
 }

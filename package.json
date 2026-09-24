@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "sync": "node scripts/sync-sheets.js"
+    "sync": "node scripts/sync-sheets.js",
+    "sync:snowflake": "node Scripts/sync-snowflake.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.0",
@@ -18,6 +19,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.10.0",
+    "snowflake-sdk": "^3.3.0",
     "xlsx": "^0.18.5"
   }
 }

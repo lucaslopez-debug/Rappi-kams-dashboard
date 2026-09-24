@@ -22,25 +22,31 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <header className="header">
-          <div className="header-title">
-            <h1>📊 Dashboard KAMs Semanal</h1>
-            <p>Rappi - Análisis de Métricas Semanales</p>
+          <div className="header-top">
+            <div className="header-title">
+              <h1>📊 Dashboard KAMs Semanal</h1>
+              <p>Rappi - Análisis de Métricas Semanales</p>
+            </div>
+            <div className="header-right">
+              {/* Contenedor vacío: KamDashboard porta acá (React portal) los
+                  botones de Importar Excel / Importar Compensation, así quedan
+                  a la izquierda del logo aunque la lógica siga viviendo en el
+                  componente del dashboard. */}
+              <div id="header-import-actions" className="header-import-actions"></div>
+              <img
+                src="/rappi-logo.webp"
+                alt="Rappi"
+                className="header-logo"
+              />
+              {/* Contenedor vacío: acá se porta el botón de alerta (🚨 Brands
+                  caídas a 0% de Markdown), en la esquina superior derecha. */}
+              <div id="header-alert-actions" className="header-alert-actions"></div>
+            </div>
           </div>
-          <div className="header-right">
-            {/* Contenedor vacío: KamDashboard porta acá (React portal) los
-                botones de Importar Excel / Importar Compensation, así quedan
-                a la izquierda del logo aunque la lógica siga viviendo en el
-                componente del dashboard. */}
-            <div id="header-import-actions" className="header-import-actions"></div>
-            <img
-              src="/rappi-logo.webp"
-              alt="Rappi"
-              className="header-logo"
-            />
-            {/* Contenedor vacío: acá se porta el botón de alerta (🚨 Brands
-                caídas a 0% de Markdown), en la esquina superior derecha. */}
-            <div id="header-alert-actions" className="header-alert-actions"></div>
-          </div>
+          {/* Contenedor vacío: app/page.js porta acá el filtro de KAM, que
+              aplica a todas las secciones (Markdown, Tarjetas, ...) y queda
+              fijo arriba al scrollear junto con el resto del header. */}
+          <div id="header-kam-tabs" className="header-kam-tabs"></div>
         </header>
         {children}
       </body>

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { BarChart, Bar, XAxis, YAxis, LabelList, ResponsiveContainer } from 'recharts'
 import { Poppins } from 'next/font/google'
 import { toPng, toJpeg } from 'html-to-image'
+import AvancesWarningsPanel from '@/components/AvancesWarningsPanel'
 import AccionablesPanel from '@/components/AccionablesPanel'
 import { supabase } from '@/lib/supabase'
 
@@ -296,76 +297,6 @@ function buildResumenClipboardContent(resumen) {
   }
 }
 
-// Importación de Excel para Brands with Markdown: nombres de columna aceptados
-// por campo (normalizados a minúscula/sin espacios extra), para bancar que el
-// archivo venga con alguna variación de mayúsculas/espacios respecto al sheet
-// original de comisiones
-const MD_IMPORT_COLUMN_ALIASES = {
-  email: ['comercial', 'email', 'mail', 'kam'],
-  result: ['brands w/md result', 'brands w md result', 'brands with md result'],
-  target: ['brands w/md target', 'brands w md target', 'brands with md target'],
-}
-
-function normalizeHeaderCell(value) {
-  return String(value ?? '').toLowerCase().trim().replace(/\s+/g, ' ')
-}
-
-function findMdImportColumnIndex(headerRow, aliases) {
-  const normalized = headerRow.map(normalizeHeaderCell)
-  for (const alias of aliases) {
-    const idx = normalized.indexOf(alias)
-    if (idx !== -1) return idx
-  }
-  return -1
-}
-
-// Igual que findMdImportColumnIndex pero más tolerante: si no hay ningún
-// encabezado que coincida EXACTO con un alias, prueba de nuevo buscando el
-// alias como substring (ej. alias "aliado" matchea "nombre del aliado").
-// Se usa solo para Availability, que es el import con menos certeza sobre
-// cómo viene nombrada la columna — los otros dos imports siguen con match
-// exacto para no arriesgar falsos positivos en algo que ya funciona.
-function findColumnIndexFuzzy(headerRow, aliases) {
-  const exact = findMdImportColumnIndex(headerRow, aliases)
-  if (exact !== -1) return exact
-
-  const normalized = headerRow.map(normalizeHeaderCell)
-  for (const alias of aliases) {
-    const idx = normalized.findIndex((h) => h.includes(alias))
-    if (idx !== -1) return idx
-  }
-  return -1
-}
-
-// Importación de Excel para Accionar Urgente ("Compensation"): a diferencia de
-// Brands with Markdown (un solo % agregado por KAM), este archivo es un reporte
-// jerárquico tipo pivot exportado a plano: el email del KAM (columna "OWNER")
-// aparece UNA sola vez, en su fila de subtotal ("Bucket"="Total"), y todas las
-// filas de aliados que le siguen (PRIORITIZED/NON PRIORITIZED/ADJUSTED) tienen
-// esa celda vacía hasta el próximo KAM. Por eso el parseo hace "forward-fill"
-// del último email visto en vez de exigirlo en la misma fila que el aliado.
-const COMPENSATION_IMPORT_COLUMN_ALIASES = {
-  email: ['comercial', 'email', 'mail', 'kam', 'owner'],
-  brand: ['aliado', 'brand', 'marca', 'nombre comercial', 'restaurante', 'partner', 'brand_id_name'],
-  mdArchieFinal: ['md archie final', 'md achie final', 'archie final', 'achie final', '% md archie final'],
-}
-
-// El aliado viene como "AR65117-Luigi Heladeria y Pasteleria" (ID país+código,
-// guion, nombre). Separa el ID (para usarlo como key estable entre imports,
-// a prueba de acentos/espacios) del nombre legible para mostrar.
-function parseBrandIdName(raw) {
-  if (raw === null || raw === undefined) return null
-  const trimmed = String(raw).trim()
-  if (!trimmed) return null
-  const match = trimmed.match(/^([A-Za-z]{2,4}\d+)-(.+)$/)
-  if (match) return { key: match[1].toUpperCase(), name: match[2].trim() }
-  return { key: trimmed.toLowerCase(), name: trimmed }
-}
-
-// Umbral de "Accionar Urgente": aliados con % de MD Archie Final entre 70 y 85 —
-// los que todavía no llegan al mínimo de target (70-80%) y los que ya lo cruzaron
-// pero están al borde, sin margen (80-85%). Ver mdStatusFor: 80% es el mismo
-// corte de "mínimo cumplido" que usa el resto de la app.
 const URGENT_MD_MIN = 70
 const URGENT_MD_MAX = 85
 const URGENT_MD_TARGET_CUT = 80
@@ -385,82 +316,16 @@ const MONTH_ABBR_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', '
 const MONTH_NAMES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 const MD_DROP_EPSILON = 0.01
 
-// Importación de Excel para Availability: a diferencia de Compensation/Brands
-// with Markdown (un valor fijo por aliado), este archivo trae UNA COLUMNA POR
-// FECHA (una semana cada una) — hay que detectar cuáles encabezados son
-// fechas, quedarse con las dos más recientes (última semana vs. la anterior)
-// y sacar el % de availability de esas dos columnas para cada aliado. El
-// archivo NO trae KAM ni email — solo el nombre del aliado — así que el KAM
-// se resuelve cruzando ese nombre contra los aliados que weeklyData ya tiene
-// (de todos los KAMs), no contra un email.
-const AVAILABILITY_IMPORT_COLUMN_ALIASES = {
-  // Orden importa para el fallback "contains" de findColumnIndexFuzzy: los
-  // términos más específicos van primero, "nombre" a solas al final porque
-  // es el que más probable es que aparezca como substring de otra cosa.
-  brand: [
-    'aliado', 'brand', 'marca', 'restaurante', 'restaurant', 'partner', 'store',
-    'establecimiento', 'comercio', 'seller', 'brand_id_name', 'nombre comercial',
-    'nombre del aliado', 'nombre restaurante', 'nombre',
-  ],
-}
-
 function normalizeBrandNameKey(name) {
   return String(name ?? '').toLowerCase().trim()
 }
 
-// Excel guarda fechas como número serial (días desde 1899-12-30) cuando la
-// celda no llega como objeto Date — cubrimos los dos casos, más un puñado de
-// formatos de texto por si el encabezado no está formateado como fecha real.
-function parseHeaderDateCell(value) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value
-
-  if (typeof value === 'number' && value > 20000 && value < 80000) {
-    // Epoch de Excel: 1899-12-30 (con el bug del año bisiesto 1900 incluido,
-    // que es como lo resuelve todo el ecosistema de hojas de cálculo).
-    const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30)
-    return new Date(EXCEL_EPOCH_MS + value * 86400000)
-  }
-
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    let match = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/)
-    if (match) {
-      let [, d, m, y] = match
-      if (y.length === 2) y = `20${y}`
-      const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)))
-      if (!Number.isNaN(date.getTime())) return date
-    }
-    match = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
-    if (match) {
-      const [, y, m, d] = match
-      const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)))
-      if (!Number.isNaN(date.getTime())) return date
-    }
-    match = trimmed.match(/^(\d{1,2})\s+([A-Za-zÁ-ú]{3,})/)
-    if (match) {
-      const monthIdx = MONTHS[match[2].slice(0, 3)]
-      if (monthIdx !== undefined) return new Date(Date.UTC(new Date().getFullYear(), monthIdx, Number(match[1])))
-    }
-  }
-
-  return null
+function latestRow(rows) {
+  return rows.reduce((a, b) => (a.updated_at > b.updated_at ? a : b))
 }
 
-function formatDateAsWeekLabel(date) {
-  return `${String(date.getUTCDate()).padStart(2, '0')} ${MONTH_ABBR_EN[date.getUTCMonth()]}`
-}
-
-// Acepta el % como "78%", "78" o "0.78" (fracción) — normaliza todo a puntos
-// porcentuales (78). Si el texto trae el símbolo "%" explícito, el número ya
-// está en puntos porcentuales y no se reescala.
-function parsePercentCell(raw) {
-  if (raw === null || raw === undefined || raw === '') return null
-  const isPercentString = typeof raw === 'string' && raw.includes('%')
-  const cleaned = String(raw).replace('%', '').replace(',', '.').trim()
-  const num = Number(cleaned)
-  if (!Number.isFinite(num)) return null
-  if (isPercentString) return num
-  return Math.abs(num) <= 1 ? num * 100 : num
+function formatSyncTime(iso) {
+  return new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 // Umbrales seleccionables para "cuántas brands faltan" en Brands with Markdown
@@ -636,8 +501,9 @@ function GrowthLabel({ x, y, width, value }) {
   )
 }
 
-export default function KamDashboard({ data }) {
-  const [activeKam, setActiveKam] = useState(0)
+// El KAM activo lo controla app/page.js (el filtro vive en el header y aplica
+// a todas las secciones), acá solo se recibe el índice y el setter.
+export default function KamDashboard({ data, activeKam, onSelectKam }) {
   const [activeSubTab, setActiveSubTab] = useState('topbottom')
   const [hoverBrand, setHoverBrand] = useState(null)
   const [hoverPos, setHoverPos] = useState(null)
@@ -891,10 +757,9 @@ export default function KamDashboard({ data }) {
       .sort((a, b) => b.md_archie_final_pct - a.md_archie_final_pct)
   }, [compensationRows])
 
-  // Availability por aliado (cargado desde el import de Availability): última
-  // semana vs. la anterior, tal como vienen esas dos columnas en el archivo.
-  // Igual que Compensation, es un snapshot por aliado (no una serie semanal
-  // que arma la app) — cada import lo pisa con lo que traiga el archivo nuevo.
+  // Availability por aliado (lo carga el sync de Snowflake, ver
+  // lib/availabilitySync.js): semana en curso vs. la anterior. Es un snapshot
+  // por aliado — cada sync lo pisa con la foto nueva.
   const [availabilityRows, setAvailabilityRows] = useState([])
 
   useEffect(() => {
@@ -911,6 +776,22 @@ export default function KamDashboard({ data }) {
       })
     return () => { cancelled = true }
   }, [kamActive])
+
+  // Para los indicadores del header: cuándo corrió el último sync de Snowflake
+  // (el updated_at más reciente de las filas del KAM activo).
+  const availabilitySyncInfo = useMemo(() => {
+    if (!availabilityRows.length) return null
+    const latest = latestRow(availabilityRows)
+    return {
+      weeks: `${latest.previous_week} → ${latest.current_week}`,
+      updatedLabel: formatSyncTime(latest.updated_at),
+    }
+  }, [availabilityRows])
+
+  const compensationSyncInfo = useMemo(() => {
+    if (!compensationRows.length) return null
+    return { updatedLabel: formatSyncTime(latestRow(compensationRows).updated_at) }
+  }, [compensationRows])
 
   // Las tablas de Top/Bottom/Middle/Churn identifican brands por brand_id de
   // weekly_data, y Accionar Urgente por el brand_key del import de
@@ -973,122 +854,16 @@ export default function KamDashboard({ data }) {
       .map((k, idx) => ({ ...k, rank: idx + 1 }))
   }, [kams, kamsMdStatusMap])
 
-  // Importar Excel de Brands with Markdown: lee el archivo, identifica las
-  // columnas de Comercial (email) / Brands w/MD Result / Brands w/MD Target,
-  // cruza cada fila contra el email de un KAM existente y pisa esos valores
-  // en brand_markdown_status para todos los KAMs que hayan matcheado
-  const mdImportInputRef = useRef(null)
-  const [mdImportStatus, setMdImportStatus] = useState(null)
+  // Brands with Markdown es por KAM (no por aliado): el último sync es el
+  // updated_at más reciente entre todos los KAMs.
+  const brandsWithMdSyncInfo = useMemo(() => {
+    const rows = Object.values(kamsMdStatusMap).filter((r) => r?.updated_at)
+    if (!rows.length) return null
+    return { updatedLabel: formatSyncTime(latestRow(rows).updated_at) }
+  }, [kamsMdStatusMap])
 
-  const handleMdImportClick = () => mdImportInputRef.current?.click()
-
-  const handleMdImportFile = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-
-    setMdImportStatus({ type: 'loading', message: 'Leyendo archivo...' })
-
-    try {
-      const XLSX = await import('xlsx')
-      const buffer = await file.arrayBuffer()
-      const workbook = XLSX.read(buffer, { type: 'array' })
-      const sheet = workbook.Sheets[workbook.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null })
-
-      if (!rows.length) throw new Error('El archivo está vacío.')
-
-      const headerRow = rows[0]
-      const emailIdx = findMdImportColumnIndex(headerRow, MD_IMPORT_COLUMN_ALIASES.email)
-      const resultIdx = findMdImportColumnIndex(headerRow, MD_IMPORT_COLUMN_ALIASES.result)
-      const targetIdx = findMdImportColumnIndex(headerRow, MD_IMPORT_COLUMN_ALIASES.target)
-
-      if (emailIdx === -1 || resultIdx === -1 || targetIdx === -1) {
-        throw new Error('No encontré las columnas "Comercial", "Brands w/MD Result" y "Brands w/MD Target" en el archivo. Revisá los encabezados.')
-      }
-
-      const emailToKam = new Map((kams || []).map((k) => [k.email?.toLowerCase().trim(), k]))
-      const updatedAt = new Date().toISOString()
-      const updates = []
-      const unmatchedEmails = []
-
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i]
-        if (!row || row.every((cell) => cell === null || cell === '')) continue
-
-        const email = String(row[emailIdx] || '').toLowerCase().trim()
-        if (!email) continue
-
-        const kam = emailToKam.get(email)
-        if (!kam) {
-          unmatchedEmails.push(email)
-          continue
-        }
-
-        const result = Number(row[resultIdx])
-        const target = Number(row[targetIdx])
-        if (!Number.isFinite(result) || !Number.isFinite(target)) continue
-
-        updates.push({
-          kam_id: kam.id,
-          email: kam.email,
-          brands_md_result: result,
-          brands_md_target: target,
-          updated_at: updatedAt,
-        })
-      }
-
-      if (updates.length === 0) {
-        throw new Error('Ninguna fila coincidió con los emails de los KAMs actuales.')
-      }
-
-      const { error } = await supabase
-        .from('brand_markdown_status')
-        .upsert(updates, { onConflict: 'kam_id' })
-
-      if (error) throw error
-
-      // Reflejar el cambio al toque, sin esperar a un refetch: si el KAM activo
-      // estaba entre los actualizados, pisa su brandMdStatus (tarjeta Brands with
-      // Markdown); y para TODOS los actualizados, pisa kamsMdStatusMap — de ahí
-      // sale kamsRanking, así que el ranking se reordena solo apenas termina el
-      // import, con los targets nuevos, sin depender del refetch de 60s.
-      const ownUpdate = kamActive && updates.find((u) => u.kam_id === kamActive.id)
-      if (ownUpdate) setBrandMdStatus(ownUpdate)
-
-      setKamsMdStatusMap((prev) => {
-        const next = { ...prev }
-        updates.forEach((u) => {
-          next[u.kam_id] = {
-            kam_id: u.kam_id,
-            brands_md_result: u.brands_md_result,
-            brands_md_target: u.brands_md_target,
-            updated_at: u.updated_at,
-          }
-        })
-        return next
-      })
-
-      let message = `✅ ${updates.length} KAM${updates.length === 1 ? '' : 's'} actualizado${updates.length === 1 ? '' : 's'} correctamente.`
-      if (unmatchedEmails.length > 0) {
-        message += ` ${unmatchedEmails.length} fila${unmatchedEmails.length === 1 ? '' : 's'} no coincidió con ningún KAM.`
-      }
-      setMdImportStatus({ type: 'success', message })
-    } catch (err) {
-      setMdImportStatus({ type: 'error', message: err.message || 'No se pudo importar el archivo.' })
-    }
-  }
-
-  // Importar Excel de Compensation (Accionar Urgente): a diferencia del import
-  // de Brands with Markdown (una fila por KAM), acá cada fila es un aliado —
-  // se cruza por email de KAM + nombre de aliado, y se guarda su % de "MD
-  // archie final" en brand_compensation_status.
-  const compensationImportInputRef = useRef(null)
-  const [compensationImportStatus, setCompensationImportStatus] = useState(null)
-
-  // Los botones de Importar Excel / Importar Compensation se portan (React
-  // portal) al header (ver app/layout.js), a la izquierda del logo de Rappi,
-  // en vez de renderizarse acá donde vive la lógica — el nodo del header
+  // Los indicadores de sync se portan (React portal) al header (ver
+  // app/layout.js), a la izquierda del logo de Rappi — el nodo del header
   // recién existe en el DOM después de montar, de ahí el useEffect.
   const [importActionsHost, setImportActionsHost] = useState(null)
   useEffect(() => {
@@ -1103,272 +878,6 @@ export default function KamDashboard({ data }) {
   useEffect(() => {
     setAlertActionsHost(document.getElementById('header-alert-actions'))
   }, [])
-
-  const handleCompensationImportClick = () => compensationImportInputRef.current?.click()
-
-  const handleCompensationImportFile = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-
-    setCompensationImportStatus({ type: 'loading', message: 'Leyendo archivo...' })
-
-    try {
-      const XLSX = await import('xlsx')
-      const buffer = await file.arrayBuffer()
-      const workbook = XLSX.read(buffer, { type: 'array' })
-      const sheet = workbook.Sheets[workbook.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null })
-
-      if (!rows.length) throw new Error('El archivo está vacío.')
-
-      const headerRow = rows[0]
-      const emailIdx = findMdImportColumnIndex(headerRow, COMPENSATION_IMPORT_COLUMN_ALIASES.email)
-      const brandIdx = findMdImportColumnIndex(headerRow, COMPENSATION_IMPORT_COLUMN_ALIASES.brand)
-      const mdArchieIdx = findMdImportColumnIndex(headerRow, COMPENSATION_IMPORT_COLUMN_ALIASES.mdArchieFinal)
-
-      if (emailIdx === -1 || brandIdx === -1 || mdArchieIdx === -1) {
-        throw new Error('No encontré las columnas "Comercial", "Aliado" y "MD archie final" en el archivo. Revisá los encabezados.')
-      }
-
-      const emailToKam = new Map((kams || []).map((k) => [k.email?.toLowerCase().trim(), k]))
-      const updatedAt = new Date().toISOString()
-      const updates = []
-      const unmatchedEmails = new Set()
-
-      // "Forward-fill": el OWNER solo viene completo en la fila de subtotal de
-      // cada KAM — se guarda acá y se reutiliza en todas las filas de aliados
-      // que le siguen, hasta que aparezca un OWNER nuevo (o se corte el archivo).
-      let currentEmail = null
-
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i]
-        if (!row || row.every((cell) => cell === null || cell === '')) continue
-
-        const ownerCell = row[emailIdx]
-        if (ownerCell !== null && ownerCell !== undefined && ownerCell !== '') {
-          currentEmail = String(ownerCell).toLowerCase().trim()
-        }
-        if (!currentEmail || currentEmail === 'total') continue
-
-        const brandCell = row[brandIdx]
-        const parsedBrand = parseBrandIdName(brandCell)
-        // Las filas de subtotal (por KAM o por Bucket PRIORITIZED/NON PRIORITIZED/
-        // ADJUSTED) repiten "Total" en la columna del aliado — no son aliados reales.
-        if (!parsedBrand || parsedBrand.name.toLowerCase() === 'total') continue
-
-        const kam = emailToKam.get(currentEmail)
-        if (!kam) {
-          unmatchedEmails.add(currentEmail)
-          continue
-        }
-
-        const mdArchieFinalPct = parsePercentCell(row[mdArchieIdx])
-        if (mdArchieFinalPct === null) continue
-
-        updates.push({
-          kam_id: kam.id,
-          brand_key: parsedBrand.key,
-          brand_name: parsedBrand.name,
-          md_archie_final_pct: mdArchieFinalPct,
-          updated_at: updatedAt,
-        })
-      }
-
-      if (updates.length === 0) {
-        throw new Error('Ninguna fila coincidió con los emails de los KAMs actuales.')
-      }
-
-      const { error } = await supabase
-        .from('brand_compensation_status')
-        .upsert(updates, { onConflict: 'kam_id,brand_key' })
-
-      if (error) throw error
-
-      // Reflejar el cambio al toque si el KAM activo estaba entre los actualizados,
-      // sin esperar a un refetch
-      if (kamActive) {
-        const ownUpdates = updates.filter((u) => u.kam_id === kamActive.id)
-        if (ownUpdates.length > 0) setCompensationRows(ownUpdates)
-      }
-
-      const uniqueKams = new Set(updates.map((u) => u.kam_id)).size
-      let message = `✅ ${updates.length} aliado${updates.length === 1 ? '' : 's'} actualizado${updates.length === 1 ? '' : 's'} en ${uniqueKams} KAM${uniqueKams === 1 ? '' : 's'}.`
-      if (unmatchedEmails.size > 0) {
-        message += ` ${unmatchedEmails.size} email${unmatchedEmails.size === 1 ? '' : 's'} no coincidió con ningún KAM (${[...unmatchedEmails].join(', ')}).`
-      }
-      setCompensationImportStatus({ type: 'success', message })
-    } catch (err) {
-      setCompensationImportStatus({ type: 'error', message: err.message || 'No se pudo importar el archivo.' })
-    }
-  }
-
-  // Importar Excel de Availability: a diferencia de Compensation/Brands with
-  // Markdown, este archivo trae una columna por semana (se detectan las
-  // fechas de los encabezados y se toman las dos más recientes) y no trae
-  // KAM/email — el aliado se cruza por nombre contra weeklyData para saber
-  // a qué KAM pertenece.
-  const availabilityImportInputRef = useRef(null)
-  const [availabilityImportStatus, setAvailabilityImportStatus] = useState(null)
-
-  const handleAvailabilityImportClick = () => availabilityImportInputRef.current?.click()
-
-  const handleAvailabilityImportFile = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-
-    setAvailabilityImportStatus({ type: 'loading', message: 'Leyendo archivo...' })
-
-    try {
-      const XLSX = await import('xlsx')
-      const buffer = await file.arrayBuffer()
-      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
-      const sheet = workbook.Sheets[workbook.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null })
-
-      if (!rows.length) throw new Error('El archivo está vacío.')
-
-      // Este archivo es un pivot con VARIAS filas de encabezado apiladas (Mes
-      // → Fecha → Métrica) en vez de una sola fila: algo como
-      //   fila 0: "MONTH" | "August" (merged) | "September" (merged) | ...
-      //   fila 1: "...Hierarchy" | 8/10 | 8/17 | 8/24 | 8/31 | 9/7 | 9/14 | ...
-      //   fila 2: "BRAND_NAME STORE_NAME" | Availability | Configured Hours | Available Hours | Availability | ...
-      // y recién de la fila 3 en adelante vienen los datos. Por eso primero
-      // hay que encontrar CUÁL fila es la de "Availability" (la real fila de
-      // encabezados de columna), en vez de asumir que es la fila 0.
-      let labelRowIdx = -1
-      let labelRow = null
-      for (let i = 0; i < Math.min(rows.length, 15); i++) {
-        const row = rows[i] || []
-        const hasAvailability = row.some((cell) => normalizeHeaderCell(cell) === 'availability')
-        if (hasAvailability) { labelRowIdx = i; labelRow = row; break }
-      }
-
-      if (labelRowIdx === -1) {
-        const firstRows = rows.slice(0, 3).map((r) => (r || []).map((h) => String(h ?? '').trim()).filter(Boolean).join(' | ')).filter(Boolean).join('  /  ')
-        throw new Error(`No encontré ninguna columna "Availability" en el archivo. Primeras filas que sí leí: ${firstRows || '(vinieron vacías)'}`)
-      }
-
-      const brandIdx = findColumnIndexFuzzy(labelRow, AVAILABILITY_IMPORT_COLUMN_ALIASES.brand)
-
-      if (brandIdx === -1) {
-        const headerPreview = labelRow.map((h) => String(h ?? '').trim()).filter(Boolean).join(' | ')
-        throw new Error(`No encontré la columna del nombre del aliado (fila de encabezados: ${headerPreview}).`)
-      }
-
-      // Una columna "Availability" por semana. La fecha de cada una está en
-      // alguna fila POR ENCIMA de labelRow (fusionada en Excel, por eso puede
-      // no estar exactamente en la misma columna — se prueba esa columna y un
-      // par a la izquierda, que es hacia donde queda el valor de una celda
-      // combinada).
-      const findDateForColumn = (colIdx) => {
-        for (let r = labelRowIdx - 1; r >= 0; r--) {
-          for (let c = colIdx; c >= Math.max(0, colIdx - 2); c--) {
-            const d = parseHeaderDateCell(rows[r]?.[c])
-            if (d) return d
-          }
-        }
-        return null
-      }
-
-      const dateCols = labelRow
-        .map((cell, idx) => ({ idx, isAvailability: normalizeHeaderCell(cell) === 'availability' }))
-        .filter((c) => c.isAvailability)
-        .map((c) => ({ idx: c.idx, date: findDateForColumn(c.idx) }))
-        .filter((c) => c.date !== null)
-        .sort((a, b) => b.date - a.date)
-
-      if (dateCols.length < 2) {
-        throw new Error('Encontré la columna "Availability" pero no pude sacarle la fecha a al menos dos de esas columnas (semana actual vs. anterior). Revisá el archivo.')
-      }
-
-      const [currentCol, previousCol] = dateCols
-      const currentWeekLabel = formatDateAsWeekLabel(currentCol.date)
-      const previousWeekLabel = formatDateAsWeekLabel(previousCol.date)
-
-      // El archivo no trae KAM ni email — solo el nombre del aliado — así que
-      // el KAM se resuelve cruzando ese nombre contra los aliados que
-      // weeklyData ya tiene de TODOS los KAMs (no solo el activo). Se guarda
-      // también el brand_id "real" de weekly_data cuando existe, en vez del
-      // que traiga el archivo de Availability, para que brand_key quede en
-      // el mismo esquema de ID que el resto de la app.
-      const brandNameToKam = new Map()
-      ;(weeklyData || []).forEach((row) => {
-        if (!row.brand_name || row.brand_name === 'TOTAL_KAM') return
-        const key = normalizeBrandNameKey(row.brand_name)
-        if (!brandNameToKam.has(key)) {
-          brandNameToKam.set(key, { kam_id: row.kam_id, brand_id: row.brand_id })
-        }
-      })
-
-      const updatedAt = new Date().toISOString()
-      const updates = []
-      const unmatchedBrands = new Set()
-
-      for (let i = labelRowIdx + 1; i < rows.length; i++) {
-        const row = rows[i]
-        if (!row || row.every((cell) => cell === null || cell === '')) continue
-
-        // Cada fila viene como "Nombre del aliado Total" (fila de subtotal
-        // del pivot, una por aliado) — se saca el " Total" del final antes de
-        // parsear el nombre.
-        const rawBrandCell = row[brandIdx]
-        const cleanedBrandCell = typeof rawBrandCell === 'string'
-          ? rawBrandCell.replace(/\s+total$/i, '').trim()
-          : rawBrandCell
-        const parsedBrand = parseBrandIdName(cleanedBrandCell)
-        if (!parsedBrand || parsedBrand.name.toLowerCase() === 'total') continue
-
-        const match = brandNameToKam.get(normalizeBrandNameKey(parsedBrand.name))
-        if (!match) {
-          unmatchedBrands.add(parsedBrand.name)
-          continue
-        }
-
-        const availabilityCurrent = parsePercentCell(row[currentCol.idx])
-        if (availabilityCurrent === null) continue
-        const availabilityPrevious = parsePercentCell(row[previousCol.idx])
-
-        updates.push({
-          kam_id: match.kam_id,
-          brand_key: match.brand_id || parsedBrand.key,
-          brand_name: parsedBrand.name,
-          availability_current: availabilityCurrent,
-          availability_previous: availabilityPrevious,
-          current_week: currentWeekLabel,
-          previous_week: previousWeekLabel,
-          updated_at: updatedAt,
-        })
-      }
-
-      if (updates.length === 0) {
-        throw new Error('Ningún aliado del archivo coincidió con los aliados que ya tiene la app. Revisá que el nombre esté escrito igual.')
-      }
-
-      const { error } = await supabase
-        .from('brand_availability_status')
-        .upsert(updates, { onConflict: 'kam_id,brand_key' })
-
-      if (error) throw error
-
-      if (kamActive) {
-        const ownUpdates = updates.filter((u) => u.kam_id === kamActive.id)
-        if (ownUpdates.length > 0) setAvailabilityRows(ownUpdates)
-      }
-
-      const uniqueKams = new Set(updates.map((u) => u.kam_id)).size
-      let message = `✅ ${updates.length} aliado${updates.length === 1 ? '' : 's'} actualizado${updates.length === 1 ? '' : 's'} en ${uniqueKams} KAM${uniqueKams === 1 ? '' : 's'} (${previousWeekLabel} → ${currentWeekLabel}).`
-      if (unmatchedBrands.size > 0) {
-        const preview = [...unmatchedBrands].slice(0, 8).join(', ')
-        const rest = unmatchedBrands.size > 8 ? ` y ${unmatchedBrands.size - 8} más` : ''
-        message += ` ${unmatchedBrands.size} aliado${unmatchedBrands.size === 1 ? '' : 's'} del archivo no coincidió con ninguno existente (${preview}${rest}).`
-      }
-      setAvailabilityImportStatus({ type: 'success', message })
-    } catch (err) {
-      setAvailabilityImportStatus({ type: 'error', message: err.message || 'No se pudo importar el archivo.' })
-    }
-  }
 
   // Filtrar SOLO TOTAL_KAM del KAM activo (para KPIs y gráficos agregados)
   const kamDataFiltered = useMemo(() => {
@@ -1797,83 +1306,31 @@ export default function KamDashboard({ data }) {
             <div className="ranking-title">🏅 Rankings Markdown</div>
           </div>
 
-          {/* Importar Excel / Importar Compensation viven lógicamente acá (y no
-              en Brands with Markdown) porque cruzan el archivo entero contra
-              todos los KAMs de una, no son una acción por KAM individual — pero
-              se portan (React portal) al header, a la izquierda del logo de
-              Rappi, en vez de renderizarse en el ranking. */}
+          {/* Estado de los datos que carga el sync de Snowflake (ya no hay
+              imports manuales): se porta (React portal) al header, a la
+              izquierda del logo de Rappi — un indicador por fuente, apilados. */}
           {importActionsHost && createPortal(
-            <div className="md-import">
-              {/* Importar Availability va primero: trae, por aliado, el %
-                  de availability de la última semana vs. la anterior, que
-                  después se muestra al final de las tablas de Top/Bottom,
-                  Middle, Accionar Urgente y Posibles churn. */}
-              <input
-                ref={availabilityImportInputRef}
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleAvailabilityImportFile}
-                style={{ display: 'none' }}
-              />
-              <button
-                type="button"
-                className="md-import-btn"
-                onClick={handleAvailabilityImportClick}
-                disabled={availabilityImportStatus?.type === 'loading'}
-              >
-                📥 Importar Availability
-              </button>
-              <input
-                ref={mdImportInputRef}
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleMdImportFile}
-                style={{ display: 'none' }}
-              />
-              <button
-                type="button"
-                className="md-import-btn"
-                onClick={handleMdImportClick}
-                disabled={mdImportStatus?.type === 'loading'}
-              >
-                📥 Importar Excel
-              </button>
-              {/* Importar Compensation alimenta Accionar Urgente: trae el % de
-                  "MD archie final" por aliado (no por KAM), cruzado igual que
-                  el resto por email de Comercial. */}
-              <input
-                ref={compensationImportInputRef}
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleCompensationImportFile}
-                style={{ display: 'none' }}
-              />
-              <button
-                type="button"
-                className="md-import-btn"
-                onClick={handleCompensationImportClick}
-                disabled={compensationImportStatus?.type === 'loading'}
-              >
-                📥 Importar Compensation
-              </button>
+            <div className="sync-status">
+              {brandsWithMdSyncInfo && (
+                <div className="sync-chip" title={`Brands with Markdown sincronizado desde Snowflake el ${brandsWithMdSyncInfo.updatedLabel}`}>
+                  <span className="sync-chip-dot" />
+                  Brands with MD · {brandsWithMdSyncInfo.updatedLabel}
+                </div>
+              )}
+              {compensationSyncInfo && (
+                <div className="sync-chip" title={`Compensation sincronizado desde Snowflake el ${compensationSyncInfo.updatedLabel}`}>
+                  <span className="sync-chip-dot" />
+                  Compensation · {compensationSyncInfo.updatedLabel}
+                </div>
+              )}
+              {availabilitySyncInfo && (
+                <div className="sync-chip" title={`Availability sincronizado desde Snowflake el ${availabilitySyncInfo.updatedLabel}`}>
+                  <span className="sync-chip-dot" />
+                  Availability · {availabilitySyncInfo.weeks} · {availabilitySyncInfo.updatedLabel}
+                </div>
+              )}
             </div>,
             importActionsHost
-          )}
-
-          {availabilityImportStatus && (
-            <div className={`md-import-status md-import-status-${availabilityImportStatus.type}`}>
-              {availabilityImportStatus.message}
-            </div>
-          )}
-          {mdImportStatus && (
-            <div className={`md-import-status md-import-status-${mdImportStatus.type}`}>
-              {mdImportStatus.message}
-            </div>
-          )}
-          {compensationImportStatus && (
-            <div className={`md-import-status md-import-status-${compensationImportStatus.type}`}>
-              {compensationImportStatus.message}
-            </div>
           )}
 
           {kamsRanking.length > 0 ? (
@@ -1887,7 +1344,7 @@ export default function KamDashboard({ data }) {
                     key={k.id}
                     type="button"
                     className={`ranking-row ${isActive ? 'active' : ''}`}
-                    onClick={() => kamIdx !== -1 && setActiveKam(kamIdx)}
+                    onClick={() => kamIdx !== -1 && onSelectKam(kamIdx)}
                     title={label}
                   >
                     <span className="ranking-position">#{k.rank}</span>
@@ -1898,7 +1355,7 @@ export default function KamDashboard({ data }) {
               })}
             </div>
           ) : (
-            <div className="no-data">Todavía no hay datos de Brands with Markdown importados — usá "Importar Excel" para cargarlos.</div>
+            <div className="no-data">Todavía no hay datos de Brands with Markdown — se cargan con el sync de Snowflake (npm run sync:snowflake).</div>
           )}
         </div>
       )}
@@ -2083,21 +1540,6 @@ export default function KamDashboard({ data }) {
         </div>
       )}
 
-      {/* KAM TABS */}
-      <div className="tabs-wrapper fade-in">
-        <div className="tabs">
-          {kams?.map((kam, idx) => (
-            <button
-              key={kam.id}
-              onClick={() => setActiveKam(idx)}
-              className={`tab ${activeKam === idx ? 'active' : ''}`}
-            >
-              {kam.nombre}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* FICHA DEL KAM ACTIVO */}
       {activeKamInfo && (
         <div className="filter-section fade-in kam-info-card">
@@ -2121,7 +1563,7 @@ export default function KamDashboard({ data }) {
       <div className="table-card fade-in">
         <div className="table-title">Brands with Markdown</div>
         <p className="table-subtitle">
-          Compara, para este KAM, cuántas brands de su cartera tienen markdown activo (Brands In) contra la cantidad objetivo (Markdown Target), y qué % de ese objetivo ya cumplió. Elegí un umbral para ver cuántas brands le faltan — o le sobran — para llegar a ese nivel. Actualizá los números con el botón "Importar Excel" del ranking de arriba: lee el archivo de comisiones, identifica las columnas de Comercial, Brands w/MD Result y Brands w/MD Target, y cruza cada fila con el KAM correspondiente por email.
+          Compara, para este KAM, cuántas brands de su cartera tienen markdown activo (Brands In) contra la cantidad objetivo (Markdown Target), y qué % de ese objetivo ya cumplió. Elegí un umbral para ver cuántas brands le faltan — o le sobran — para llegar a ese nivel. Los números vienen de Snowflake (compensación mensual por KAM, acumulado del mes): una brand cuenta como "con markdown" cuando su MD archie llega al 80% de su target.
         </p>
 
         {!brandMdStatus ? (
@@ -2361,6 +1803,12 @@ export default function KamDashboard({ data }) {
           onClick={() => setActiveSubTab('accionables')}
         >
           ✅ Accionables
+        </button>
+        <button
+          className={`subtab ${activeSubTab === 'avances' ? 'active' : ''}`}
+          onClick={() => setActiveSubTab('avances')}
+        >
+          📈 Avances and warnings
         </button>
       </div>
 
@@ -2737,6 +2185,21 @@ export default function KamDashboard({ data }) {
             availableWeeks={availableWeeks}
             brandOptions={kamBrandNames}
           />
+        </>
+      )}
+
+      {activeSubTab === 'avances' && kamActive && (
+        <>
+          <div className="trend-description fade-in">
+            <span className="trend-description-icon">📈</span>
+            <div>
+              <div className="trend-description-title">Avances and warnings — lo que pasa día a día</div>
+              <div className="trend-description-text">
+                Arriba, los warnings del día anterior: aliados con availability en 0% o con una caída brusca, para accionar sobre eso. Abajo, el avance de la semana contra el lunes: qué aliados llegaron al 80% de su target de MD (y cuentan como Brands with Markdown) y cuáles dejaron de estarlo. Se actualiza todos los días hábiles; el lunes muestra el cierre de la semana anterior.
+              </div>
+            </div>
+          </div>
+          <AvancesWarningsPanel kam={kamActive} />
         </>
       )}
 
