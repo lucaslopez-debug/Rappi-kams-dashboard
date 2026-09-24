@@ -22,10 +22,6 @@ export default function DashboardSkeleton() {
         </div>
       </div>
 
-      <div className="filter-section fade-in">
-        <Bone width={320} height={16} />
-      </div>
-
       <div className="table-card fade-in">
         <Bone width={220} height={20} style={{ marginBottom: 14 }} />
         <Bone width="85%" height={13} style={{ marginBottom: 6 }} />

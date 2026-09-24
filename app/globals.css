@@ -527,12 +527,19 @@ body {
 /* Sub-tabs (Top and Bottom / Middle) */
 .subtabs-wrapper {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
   margin-bottom: 20px;
 }
 
+/* Exportar Resumen vive al final de la fila de sub-pestañas, pegado a la derecha */
+.subtabs-export {
+  margin-left: auto;
+}
+
 .subtab {
-  padding: 10px 22px;
+  padding: 10px 16px;
   border-radius: 10px;
   border: 2px solid var(--border-gray);
   background: transparent;
@@ -798,24 +805,6 @@ body {
   font-size: 13px;
   font-weight: 800;
   white-space: nowrap;
-}
-
-.kam-info-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.kam-info-text {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-dark);
-}
-
-.kam-info-text strong {
-  color: var(--primary);
 }
 
 .export-resumen-btn {
@@ -1163,15 +1152,6 @@ body {
 }
 
 /* Filter Group */
-.filter-section {
-  background: linear-gradient(135deg, #1E1E1E 0%, #2A2A2A 100%);
-  border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 25px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--border-gray);
-}
-
 .filter-btn {
   padding: 10px 18px;
   border: 2px solid var(--border-gray);

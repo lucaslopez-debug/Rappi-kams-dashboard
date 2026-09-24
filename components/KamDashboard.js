@@ -505,6 +505,10 @@ function GrowthLabel({ x, y, width, value }) {
 // a todas las secciones), acá solo se recibe el índice y el setter.
 export default function KamDashboard({ data, activeKam, onSelectKam }) {
   const [activeSubTab, setActiveSubTab] = useState('topbottom')
+  // Brands with Markdown, los gráficos de 8 semanas y la Minuta Semanal son el
+  // contexto de las pestañas de análisis de markdown; en Accionables y en
+  // Avances and warnings no se muestran.
+  const showKamOverview = ['topbottom', 'middle', 'urgente', 'churn'].includes(activeSubTab)
   const [hoverBrand, setHoverBrand] = useState(null)
   const [hoverPos, setHoverPos] = useState(null)
   const hoverHideTimeout = useRef(null)
@@ -1540,90 +1544,74 @@ export default function KamDashboard({ data, activeKam, onSelectKam }) {
         </div>
       )}
 
-      {/* FICHA DEL KAM ACTIVO */}
-      {activeKamInfo && (
-        <div className="filter-section fade-in kam-info-card">
-          <div className="kam-info-text">
-            <strong>{activeKamInfo.nombre}</strong> - Kam de {activeKamInfo.region} - {activeKamInfo.brandCount} brands
-          </div>
-          {resumenEjecutivo && (
-            <button
-              type="button"
-              className="export-resumen-btn"
-              onClick={() => { setResumenDocStatus(null); setShowResumenModal(true) }}
-            >
-              📤 Exportar Resumen
-            </button>
+      {/* BRANDS WITH MARKDOWN: Brands w/MD Result/Target del KAM activo, contra
+          un umbral seleccionable, con minuta */}
+      {showKamOverview && (
+        <div className="table-card fade-in">
+          <div className="table-title">Brands with Markdown</div>
+          <p className="table-subtitle">
+            Compara, para este KAM, cuántas brands de su cartera tienen markdown activo (Brands In) contra la cantidad objetivo (Markdown Target), y qué % de ese objetivo ya cumplió. Elegí un umbral para ver cuántas brands le faltan — o le sobran — para llegar a ese nivel. Los números vienen de Snowflake (compensación mensual por KAM, acumulado del mes): una brand cuenta como "con markdown" cuando su MD archie llega al 80% de su target.
+          </p>
+
+          {!brandMdStatus ? (
+            <div className="no-data">Todavía no hay datos de Brands with Markdown cargados para este KAM.</div>
+          ) : (
+            <>
+              <div className="md-target-layout">
+                <div className="md-target-circle">
+                  <CircularProgress pct={brandMdCalc.achievedPct} />
+                  <div className="md-target-circle-label">Markdown cumplido</div>
+                </div>
+
+                <div className="md-target-stats">
+                  <div className="md-target-stat">
+                    <div className="md-target-stat-label">Brands In</div>
+                    <div className="md-target-stat-value">{brandMdStatus.brands_md_result}</div>
+                  </div>
+                  <div className="md-target-stat">
+                    <div className="md-target-stat-label">Markdown Target</div>
+                    <div className="md-target-stat-value">{brandMdStatus.brands_md_target}</div>
+                  </div>
+                  <div className="md-target-stat">
+                    <div className="md-target-stat-label">
+                      Faltan para
+                      <select
+                        value={mdGoalPct}
+                        onChange={(e) => setMdGoalPct(Number(e.target.value))}
+                        className="md-goal-select"
+                      >
+                        {MD_TARGET_GOAL_OPTIONS.map((p) => (
+                          <option key={p} value={p}>{p}%</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md-target-stat-value">
+                      {brandMdCalc.met ? (
+                        <span className="md-target-met">
+                          ✓ Cumplido{brandMdCalc.surplus > 0 ? ` (+${brandMdCalc.surplus})` : ''}
+                        </span>
+                      ) : (
+                        <>
+                          {brandMdCalc.missing} <span className="md-target-stat-unit">brand{brandMdCalc.missing === 1 ? '' : 's'}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <p className="md-target-minuta">
+                {buildMdTargetMinutaText(kamActive?.nombre, brandMdStatus.brands_md_result, brandMdStatus.brands_md_target, mdGoalPct, brandMdCalc)}
+              </p>
+            </>
           )}
         </div>
       )}
 
-      {/* BRANDS WITH MARKDOWN: Brands w/MD Result/Target del KAM activo, contra
-          un umbral seleccionable, con minuta */}
-      <div className="table-card fade-in">
-        <div className="table-title">Brands with Markdown</div>
-        <p className="table-subtitle">
-          Compara, para este KAM, cuántas brands de su cartera tienen markdown activo (Brands In) contra la cantidad objetivo (Markdown Target), y qué % de ese objetivo ya cumplió. Elegí un umbral para ver cuántas brands le faltan — o le sobran — para llegar a ese nivel. Los números vienen de Snowflake (compensación mensual por KAM, acumulado del mes): una brand cuenta como "con markdown" cuando su MD archie llega al 80% de su target.
-        </p>
-
-        {!brandMdStatus ? (
-          <div className="no-data">Todavía no hay datos de Brands with Markdown cargados para este KAM.</div>
-        ) : (
-          <>
-            <div className="md-target-layout">
-              <div className="md-target-circle">
-                <CircularProgress pct={brandMdCalc.achievedPct} />
-                <div className="md-target-circle-label">Markdown cumplido</div>
-              </div>
-
-              <div className="md-target-stats">
-                <div className="md-target-stat">
-                  <div className="md-target-stat-label">Brands In</div>
-                  <div className="md-target-stat-value">{brandMdStatus.brands_md_result}</div>
-                </div>
-                <div className="md-target-stat">
-                  <div className="md-target-stat-label">Markdown Target</div>
-                  <div className="md-target-stat-value">{brandMdStatus.brands_md_target}</div>
-                </div>
-                <div className="md-target-stat">
-                  <div className="md-target-stat-label">
-                    Faltan para
-                    <select
-                      value={mdGoalPct}
-                      onChange={(e) => setMdGoalPct(Number(e.target.value))}
-                      className="md-goal-select"
-                    >
-                      {MD_TARGET_GOAL_OPTIONS.map((p) => (
-                        <option key={p} value={p}>{p}%</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="md-target-stat-value">
-                    {brandMdCalc.met ? (
-                      <span className="md-target-met">
-                        ✓ Cumplido{brandMdCalc.surplus > 0 ? ` (+${brandMdCalc.surplus})` : ''}
-                      </span>
-                    ) : (
-                      <>
-                        {brandMdCalc.missing} <span className="md-target-stat-unit">brand{brandMdCalc.missing === 1 ? '' : 's'}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <p className="md-target-minuta">
-              {buildMdTargetMinutaText(kamActive?.nombre, brandMdStatus.brands_md_result, brandMdStatus.brands_md_target, mdGoalPct, brandMdCalc)}
-            </p>
-          </>
-        )}
-      </div>
-
       {/* 8LW: 3 tarjetas unificadas (Órdenes, Markdown, Tráfico) una a la par de la
           otra, cada una con su gráfico + diferencial juntos y su descripción
           centrada arriba */}
-      {(last8WeeksMetrics.length > 0 || lastWeekVsPrev || lastMdVsPrev || lastTrafficVsPrev) && (
+      {showKamOverview && (last8WeeksMetrics.length > 0 || lastWeekVsPrev || lastMdVsPrev || lastTrafficVsPrev) && (
         <div className="trend-columns fade-in">
           {/* ÓRDENES */}
           <div className="trend-col">
@@ -1740,7 +1728,7 @@ export default function KamDashboard({ data, activeKam, onSelectKam }) {
 
       {/* MINUTA SEMANAL: cruza órdenes y tráfico de la última semana cerrada para
           calcular la conversión, y compara todo contra la semana anterior */}
-      {conversionMinuta && (
+      {showKamOverview && conversionMinuta && (
         <div className={`minuta-card fade-in ${poppins.className}`}>
           <div className="minuta-header">
             <div className="minuta-title">🗒️ Minuta Semanal</div>
@@ -1810,6 +1798,15 @@ export default function KamDashboard({ data, activeKam, onSelectKam }) {
         >
           📈 Avances and warnings
         </button>
+        {resumenEjecutivo && (
+          <button
+            type="button"
+            className="export-resumen-btn subtabs-export"
+            onClick={() => { setResumenDocStatus(null); setShowResumenModal(true) }}
+          >
+            📤 Exportar Resumen
+          </button>
+        )}
       </div>
 
       {/* DESCRIPCIÓN DE LA PESTAÑA TOP AND BOTTOM */}
