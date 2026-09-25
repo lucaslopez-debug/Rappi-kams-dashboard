@@ -15,6 +15,9 @@ const KAMS = [
   { id: 7, nombre: 'Luciano Gelmi', email: 'luciano.gelmi@rappi.com', region: 'Corrientes' },
   { id: 8, nombre: 'Agustina Peñalva', email: 'agustina.penalva@rappi.com', region: 'Salta' },
   { id: 9, nombre: 'Virginia Medina', email: 'virginia.medina@rappi.com', region: 'Bariloche' },
+  { id: 10, nombre: 'Sofia Abella', email: 'sofia.abella@rappi.com', region: 'Rosario' },
+  { id: 11, nombre: 'Lucas Correa', email: 'l.correa@rappi.com', region: 'Rosario' },
+  { id: 12, nombre: 'Mauro Montangie', email: 'mauro.montangie@rappi.com', region: 'Santa Fe' },
 ];
 
 async function insertKams() {

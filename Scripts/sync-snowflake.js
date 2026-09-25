@@ -4,6 +4,9 @@
 //   npm run sync:snowflake compensation
 //   npm run sync:snowflake brandsWithMd
 //   npm run sync:snowflake availabilityDaily
+//   npm run sync:snowflake -- compensation --kams=a@rappi.com,b@rappi.com
+//                                          (solo esos KAMs; no toca a los demás —
+//                                           ej. KAMs recién sumados a mitad de semana)
 //   npm run sync:snowflake avances         (lo diario de "Avances and warnings": foto de
 //                                           compensation + availability por día; no toca
 //                                           las tablas del resto de la app)
@@ -36,6 +39,7 @@ const JOBS = {
     const r = await writeBrandsWithMd(supabase, rows, kams)
     console.log(`✅ Brands with Markdown: ${r.upserted} KAMs (mes ${r.month}).`)
     if (r.missing.length) console.log(`   ⚠️  Sin datos en Snowflake: ${r.missing.join(', ')}`)
+    if (r.noTarget.length) console.log(`   ⚠️  Sin target de Brands with MD en Snowflake (no se cargan): ${r.noTarget.join(', ')}`)
   },
   // Availability por aliado y por día (warnings de "Avances and warnings").
   availabilityDaily: async (sf, supabase, kams) => {
@@ -55,7 +59,10 @@ const JOBS = {
 }
 
 async function main() {
-  const requested = process.argv.slice(2)
+  const args = process.argv.slice(2)
+  const kamsArg = args.find((a) => a.startsWith('--kams='))
+  const onlyEmails = kamsArg ? kamsArg.slice('--kams='.length).split(',').map((e) => e.toLowerCase().trim()).filter(Boolean) : null
+  const requested = args.filter((a) => !a.startsWith('--'))
   // Sin argumentos: la corrida completa de los lunes (compensation y
   // brandsWithMd ya guardan la foto del día, así que "avances" no hace falta).
   const jobs = requested.length ? requested : ['availability', 'compensation', 'brandsWithMd', 'availabilityDaily']
@@ -63,7 +70,12 @@ async function main() {
   if (unknown.length) throw new Error(`Sync desconocido: ${unknown.join(', ')} (opciones: ${Object.keys(JOBS).join(', ')})`)
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY)
-  const kams = await loadKams(supabase)
+  let kams = await loadKams(supabase)
+  if (onlyEmails) {
+    const missing = onlyEmails.filter((e) => !kams.some((k) => k.email.toLowerCase() === e))
+    if (missing.length) throw new Error(`No están en la tabla kams: ${missing.join(', ')}`)
+    kams = kams.filter((k) => onlyEmails.includes(k.email.toLowerCase()))
+  }
 
   console.log(`🔄 Conectando a Snowflake (${jobs.join(' + ')}, ${kams.length} KAMs)...`)
   const sf = await connectSnowflake()

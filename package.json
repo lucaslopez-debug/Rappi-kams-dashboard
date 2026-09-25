@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "sync": "node scripts/sync-sheets.js",
+    "sync": "node Scripts/sync-sheets.js",
     "sync:snowflake": "node Scripts/sync-snowflake.js"
   },
   "dependencies": {

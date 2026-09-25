@@ -16,24 +16,24 @@ There are effectively two halves to this repo:
 npm run dev      # start Next.js dev server
 npm run build    # production build
 npm run start    # run production build
-npm run sync     # run Scripts/sync-sheets.js — pulls the Google Sheet and upserts weekly_data into Supabase
+npm run sync     # run Scripts/sync-sheets.js — pulls the Google Sheet "raw" tab and upserts weekly_data (add -- --kams=a@rappi.com,b@rappi.com to load only some KAMs without touching the rest)
 ```
 
 Other scripts are run directly with Node, not through npm:
 ```bash
-node Scripts/insert-kams.js   # (re)seeds the kams table from the hardcoded KAMS list
+node Scripts/insert-kams.js   # (re)upserts the kams roster from its hardcoded list (the kams table is the source of truth; keep this list in sync)
 node test.js                  # sanity-checks .env.local vars and the Supabase connection
 ```
-
-Note: `package.json`'s `sync` script points at `scripts/sync-sheets.js` (lowercase) while the directory on disk is `Scripts/` (capital S). This only works because Windows filesystems are case-insensitive — keep that in mind if this project is ever built/deployed on a case-sensitive filesystem (Linux CI, Vercel, etc.).
 
 There is no test suite or linter configured in this project.
 
 ## Architecture
 
-**Data flow:** Google Sheet ("dashboard weekly" tab) → `Scripts/sync-sheets.js` (Google Sheets API, service-account auth) → Supabase `weekly_data` table → Next.js app (`app/page.js`, client-side fetch via `lib/supabase.js`) → `components/KamDashboard.js` (all filtering/aggregation/rendering).
+**Data flow:** Google Sheet ("raw" tab, the raw output of a Snowflake query) → `lib/sheetsSync.js` (used by the Vercel cron `app/api/sync`, Mon/Fri 16:00 UTC = 13:00 AR, and by `Scripts/sync-sheets.js`) → Supabase `weekly_data` → Next.js app (`app/page.js`, client-side fetch via `lib/supabase.js`) → `components/KamDashboard.js` (all filtering/aggregation/rendering).
 
-**Sync script specifics** (`Scripts/sync-sheets.js`): the sheet has a fixed, position-based layout that the script depends on — row 8 (index 7) holds week-ending dates, data rows start at row 10 (index 9), columns G–N hold `orders` per week, columns P–W hold `markdown` per week, column F holds the KAM's email, column B the brand name. The script only recognizes KAMs present in the hardcoded `KAMS_MAP`/`KAMS` objects (duplicated between `sync-sheets.js` and `insert-kams.js` — update both if the KAM roster changes). Only aggregated `TOTAL_KAM` rows are written per sync (existing `TOTAL_KAM` rows are deleted and reinserted); per-brand detail rows come from elsewhere/manually.
+**Sheet sync specifics** (`lib/sheetsSync.js`): reads `'raw'!A13:Q30000` (columns: WEEK, BRAND_ID, BRAND_NAME, BRAND_OWNER_LEADER, BRAND_OWNER_EMAIL, category, …, TOTAL_ORDERS, …, GMV_USD, …, SS, MKD, …), keeps the last 8 weeks, and writes one row per brand/week plus a `TOTAL_KAM` row per KAM/week. **KAMs come from the `kams` table** (email → id) — never hardcode the roster. Stale rows are only deleted on full runs where every KAM had data; runs scoped with `onlyEmails` never delete.
+
+**Adding a KAM:** (1) insert into `kams` (nombre, email, region) — the id sequence is out of sync because the original rows used fixed ids, so pass an explicit id = max(id)+1; also add it to `Scripts/insert-kams.js`; (2) load only the new KAMs so the others keep their Monday data: `npm run sync -- --kams=<emails>` and `npm run sync:snowflake -- availability compensation brandsWithMd availabilityDaily --kams=<emails>` (every sync scopes its stale-row deletes to the KAMs it processed). A KAM without Brands w/MD target in Snowflake (TGT NULL) is skipped for that card and reported, never stored as 0.
 
 **Snowflake syncs** (`npm run sync:snowflake [availability|compensation|brandsWithMd]` → `Scripts/sync-snowflake.js`, connection in `lib/snowflakeClient.js`): one Snowflake connection runs all syncs, so browser login is approved once. Rappi's Snowflake is IP-restricted — it only works on the Rappi VPN ("IP ... is not allowed to access Snowflake" otherwise). These replaced every manual Excel import (no import buttons remain); the header shows a stacked sync-time chip per source instead.
 
