@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import KamDashboard from '@/components/KamDashboard'
 import TarjetasPanel from '@/components/TarjetasPanel'
 import DashboardSkeleton from '@/components/DashboardSkeleton'
 import SplashScreen from '@/components/SplashScreen'
 import { supabase } from '@/lib/supabase'
+import { scrollActiveIntoRow } from '@/lib/scrollIntoRow'
 
 // Cada cuánto vuelve a pedirle los datos a Supabase para reflejar lo último
 // que haya traído el sync del Sheet, sin que haga falta recargar la página.
@@ -32,6 +33,12 @@ export default function Home() {
   useEffect(() => {
     setKamTabsHost(document.getElementById('header-kam-tabs'))
   }, [])
+
+  // En pantallas chicas la fila de KAMs se desliza: el KAM activo queda centrado.
+  const kamListRef = useRef(null)
+  useEffect(() => {
+    scrollActiveIntoRow(kamListRef.current)
+  }, [activeKam, kamTabsHost, loading])
 
   useEffect(() => {
     let cancelled = false
@@ -100,7 +107,7 @@ export default function Home() {
     body = (
       <main style={{ minHeight: '100vh' }}>
         {kamTabsHost && createPortal(
-          <div className="header-kam-list">
+          <div className="header-kam-list" ref={kamListRef}>
             {data.kams.map((k, idx) => (
               <button
                 key={k.id}

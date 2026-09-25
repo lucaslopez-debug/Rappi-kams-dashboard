@@ -138,7 +138,6 @@ export default function AccionablesPanel({ kamId, currentWeek, availableWeeks, b
           onClick={addItem}
           disabled={saving || !canSave}
           className="filter-btn accionable-save-btn"
-          style={{ opacity: saving || !canSave ? 0.5 : 1 }}
         >
           {saving ? 'Guardando...' : '+ Guardar Accionable'}
         </button>

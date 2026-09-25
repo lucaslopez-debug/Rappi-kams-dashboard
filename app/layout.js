@@ -5,6 +5,14 @@ export const metadata = {
   description: 'Análisis de métricas semanales y comparativas de KAMs',
 }
 
+// Ancho de dispositivo en celulares/tablets y barra del navegador en el mismo
+// oscuro del header.
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#1E1E1E',
+}
+
 export default function RootLayout({ children }) {
   return (
     <html lang="es">
@@ -33,11 +41,16 @@ export default function RootLayout({ children }) {
                   a la izquierda del logo aunque la lógica siga viviendo en el
                   componente del dashboard. */}
               <div id="header-import-actions" className="header-import-actions"></div>
-              <img
-                src="/rappi-logo.webp"
-                alt="Rappi"
-                className="header-logo"
-              />
+              <div className="header-logo-stack">
+                <img
+                  src="/rappi-logo.webp"
+                  alt="Rappi"
+                  className="header-logo"
+                />
+                {/* Contenedor vacío: KamDashboard porta acá el botón de
+                    Exportar Resumen, debajo del logo. */}
+                <div id="header-export-actions" className="header-export-actions"></div>
+              </div>
               {/* Contenedor vacío: acá se porta el botón de alerta (🚨 Brands
                   caídas a 0% de Markdown), en la esquina superior derecha. */}
               <div id="header-alert-actions" className="header-alert-actions"></div>

@@ -57,6 +57,11 @@ There is no test suite or linter configured in this project.
 
 **`KamDashboard.js`** (the Markdown section) receives `activeKam`/`onSelectKam` as props and owns essentially all dashboard logic — week selection, WoW % calculations, top/bottom-10 brand ranking, category filtering — as memoized derivations over the full `weeklyData` array passed down from `page.js` rather than via separate queries. Note it only ever operates on rows where `brand_name === 'TOTAL_KAM'` (the per-KAM aggregate written by the sync script); per-brand rows are read but not surfaced in the current UI except via the top/bottom brand tables. Valid week labels are hardcoded in a `fechaOrder` array (e.g. `'22 Jun'`) in two places in this file — extend that list when new weeks are added to the sheet.
 
+## UI conventions
+
+- **Controls** (section "Controles" at the end of `app/globals.css`): every button, tab and select shares `--radius-control` (10px), translucent `--surface-*` backgrounds and one `--focus-ring`. Variants: navigation (`.header-kam-tab`), segmented (`.section-tab`), chips (`.subtab`, `.ranking-row`), primary amber (`.resumen-download-btn`, `.filter-btn`), secondary (`.md-drop-kam-export-btn`), icon (`.resumen-modal-close`, `.accionable-delete`), selects (`.control-select` for new ones). `.export-resumen-btn` (red gradient pill under the logo) is intentionally the only different button. New controls should reuse these classes instead of adding new looks.
+- **Responsive** (section "Responsive" at the end of `app/globals.css`): breakpoints 1024px (tablet), 900px (sync chips hidden), 640px (phone: single-row sticky header, icon-only export, full-screen modals, 16px form fields). KAM tabs, ranking and sub-tabs become horizontally scrolling rows; `lib/scrollIntoRow.js` keeps the active item centered. Touch devices get 40px minimum targets. Wide tables scroll horizontally inside `.table-container`.
+
 ## Environment variables
 
 Required in `.env.local` (see `test.js` for a connectivity check against these):

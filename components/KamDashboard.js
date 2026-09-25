@@ -5,9 +5,11 @@ import { createPortal } from 'react-dom'
 import { BarChart, Bar, XAxis, YAxis, LabelList, ResponsiveContainer } from 'recharts'
 import { Poppins } from 'next/font/google'
 import { toPng, toJpeg } from 'html-to-image'
+import { FileOutput } from 'lucide-react'
 import AvancesWarningsPanel from '@/components/AvancesWarningsPanel'
 import AccionablesPanel from '@/components/AccionablesPanel'
 import { supabase } from '@/lib/supabase'
+import { scrollActiveIntoRow } from '@/lib/scrollIntoRow'
 
 const poppins = Poppins({ subsets: ['latin'], weight: ['700', '800'] })
 
@@ -509,6 +511,11 @@ export default function KamDashboard({ data, activeKam, onSelectKam }) {
   // contexto de las pestañas de análisis de markdown; en Accionables y en
   // Avances and warnings no se muestran.
   const showKamOverview = ['topbottom', 'middle', 'urgente', 'churn'].includes(activeSubTab)
+  // En pantallas chicas las sub-pestañas se deslizan: la activa queda centrada.
+  const subtabsRef = useRef(null)
+  useEffect(() => {
+    scrollActiveIntoRow(subtabsRef.current)
+  }, [activeSubTab])
   const [hoverBrand, setHoverBrand] = useState(null)
   const [hoverPos, setHoverPos] = useState(null)
   const hoverHideTimeout = useRef(null)
@@ -870,8 +877,10 @@ export default function KamDashboard({ data, activeKam, onSelectKam }) {
   // app/layout.js), a la izquierda del logo de Rappi — el nodo del header
   // recién existe en el DOM después de montar, de ahí el useEffect.
   const [importActionsHost, setImportActionsHost] = useState(null)
+  const [exportActionsHost, setExportActionsHost] = useState(null)
   useEffect(() => {
     setImportActionsHost(document.getElementById('header-import-actions'))
+    setExportActionsHost(document.getElementById('header-export-actions'))
   }, [])
 
   // Botón de alerta (🚨 Brands caídas a 0% de Markdown), portado al header a
@@ -1760,7 +1769,7 @@ export default function KamDashboard({ data, activeKam, onSelectKam }) {
       )}
 
       {/* SUB-TABS: Top and Bottom / Middle / Accionar Urgente / Posibles churn / Accionables */}
-      <div className="subtabs-wrapper fade-in">
+      <div className="subtabs-wrapper fade-in" ref={subtabsRef}>
         <button
           className={`subtab ${activeSubTab === 'topbottom' ? 'active' : ''}`}
           onClick={() => setActiveSubTab('topbottom')}
@@ -1798,16 +1807,22 @@ export default function KamDashboard({ data, activeKam, onSelectKam }) {
         >
           📈 Avances and warnings
         </button>
-        {resumenEjecutivo && (
-          <button
-            type="button"
-            className="export-resumen-btn subtabs-export"
-            onClick={() => { setResumenDocStatus(null); setShowResumenModal(true) }}
-          >
-            📤 Exportar Resumen
-          </button>
-        )}
       </div>
+
+      {/* Exportar Resumen se porta al header, debajo del logo de Rappi. */}
+      {exportActionsHost && resumenEjecutivo && createPortal(
+        <button
+          type="button"
+          className="export-resumen-btn"
+          aria-label="Exportar Resumen"
+          title="Exportar Resumen"
+          onClick={() => { setResumenDocStatus(null); setShowResumenModal(true) }}
+        >
+          <FileOutput size={14} strokeWidth={2.4} aria-hidden="true" />
+          Exportar Resumen
+        </button>,
+        exportActionsHost
+      )}
 
       {/* DESCRIPCIÓN DE LA PESTAÑA TOP AND BOTTOM */}
       {activeSubTab === 'topbottom' && (

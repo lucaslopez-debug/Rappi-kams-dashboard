@@ -15,6 +15,18 @@
   --text-light: #B0B0B0;
   --success: #4CAF50;
   --danger: #F44336;
+
+  /* Controles (botones, pestañas, selectores): superficies translúcidas sobre
+     el fondo oscuro, esquinas de 10px y un solo anillo de foco para todo. */
+  --surface-1: rgba(255, 255, 255, 0.03);
+  --surface-2: rgba(255, 255, 255, 0.06);
+  --surface-3: rgba(255, 255, 255, 0.1);
+  --border-soft: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --radius-control: 10px;
+  --focus-ring: 0 0 0 3px rgba(255, 193, 7, 0.45);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23B0B0B0' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 html {
@@ -89,29 +101,6 @@ body {
   border-top: 1px solid var(--border-gray);
 }
 
-.header-kam-tab {
-  padding: 12px 20px;
-  cursor: pointer;
-  border: none;
-  background: none;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-light);
-  border-bottom: 3px solid transparent;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-
-.header-kam-tab:hover {
-  color: var(--text-dark);
-  background: rgba(255, 193, 7, 0.1);
-}
-
-.header-kam-tab.active {
-  color: var(--secondary);
-  border-bottom-color: var(--secondary);
-}
-
 /* Secciones por KAM (Markdown / Tarjetas / ...) */
 .section-tabs {
   display: flex;
@@ -121,29 +110,6 @@ body {
   background: var(--light-gray);
   border: 1px solid var(--border-gray);
   border-radius: 12px;
-}
-
-.section-tab {
-  flex: 1;
-  padding: 12px 20px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-light);
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.section-tab:hover {
-  color: var(--text-dark);
-  background: rgba(255, 193, 7, 0.08);
-}
-
-.section-tab.active {
-  background: var(--primary);
-  color: #0D0D0D;
 }
 
 .header-title {
@@ -176,8 +142,20 @@ body {
 }
 
 .header-logo {
-  height: 60px;
+  height: 52px;
   object-fit: contain;
+}
+
+/* Logo de Rappi con el botón de Exportar Resumen debajo */
+.header-logo-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-export-actions:empty {
+  display: none;
 }
 
 .header-alert-actions {
@@ -533,49 +511,10 @@ body {
   margin-bottom: 20px;
 }
 
-/* Exportar Resumen vive al final de la fila de sub-pestañas, pegado a la derecha */
-.subtabs-export {
-  margin-left: auto;
-}
-
-.subtab {
-  padding: 10px 16px;
-  border-radius: 10px;
-  border: 2px solid var(--border-gray);
-  background: transparent;
-  color: var(--text-light);
-  font-weight: 700;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.subtab:hover {
-  border-color: var(--primary);
-  color: var(--text-dark);
-}
-
-.subtab.active {
-  background: var(--secondary);
-  border-color: var(--secondary);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(255, 82, 82, 0.3);
-}
 
 /* Posibles churn: parpadea mientras haya aliados en la lista, para que se
    note como una alerta y no como una pestaña más — mismo lenguaje visual
    (fuerte, rápido) que el botón de alerta del header. */
-.subtab-blink {
-  border-color: var(--danger);
-  animation: subtabBlink 0.9s ease-in-out infinite;
-}
-
-.subtab-blink.active {
-  animation: none;
-  background: var(--danger);
-  border-color: var(--danger);
-  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
-}
 
 @keyframes subtabBlink {
   0%, 100% {
@@ -719,17 +658,6 @@ body {
   color: var(--success);
 }
 
-.md-goal-select {
-  padding: 2px 6px;
-  border-radius: 6px;
-  border: 1px solid var(--border-gray);
-  background: var(--light-gray);
-  color: var(--primary);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
 .md-target-minuta {
   font-size: 13px;
   line-height: 1.6;
@@ -764,29 +692,6 @@ body {
   gap: 8px;
 }
 
-.ranking-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-gray);
-  border-radius: 10px;
-  padding: 7px 12px;
-  cursor: pointer;
-  font-family: inherit;
-  transition: all 0.2s ease;
-}
-
-.ranking-row:hover {
-  border-color: var(--primary);
-  background: rgba(255, 193, 7, 0.08);
-}
-
-.ranking-row.active {
-  border-color: var(--primary);
-  background: rgba(255, 193, 7, 0.14);
-}
-
 .ranking-position {
   font-size: 14px;
   font-weight: 800;
@@ -807,22 +712,40 @@ body {
   white-space: nowrap;
 }
 
+/* Exportar Resumen (portado al header, debajo del logo): píldora con el
+   degradé del rojo de Rappi, ícono y un brillo suave al hover. */
 .export-resumen-btn {
-  padding: 8px 16px;
-  border-radius: 8px;
-  border: 2px solid var(--secondary);
-  background: var(--secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #FF5252 0%, #FF7A45 100%);
   color: #FFFFFF;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
-  cursor: pointer;
+  letter-spacing: 0.2px;
   white-space: nowrap;
-  transition: all 0.2s ease;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(255, 82, 82, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
 
 .export-resumen-btn:hover {
-  background: #FF3B3B;
-  border-color: #FF3B3B;
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow: 0 6px 20px rgba(255, 82, 82, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.export-resumen-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(255, 82, 82, 0.35);
+}
+
+.export-resumen-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 /* Modal de Resumen Ejecutivo: overlay oscuro + tarjeta capturable por
@@ -861,21 +784,6 @@ body {
   font-size: 15px;
   font-weight: 700;
   color: var(--text-dark);
-}
-
-.resumen-modal-close {
-  background: transparent;
-  border: none;
-  color: var(--text-light);
-  font-size: 16px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-}
-
-.resumen-modal-close:hover {
-  color: var(--text-dark);
-  background: rgba(255, 255, 255, 0.06);
 }
 
 /* La tarjeta en sí: esto es exactamente lo que se exporta a PNG, así que
@@ -1089,48 +997,6 @@ body {
   margin-top: 18px;
 }
 
-.resumen-download-btn,
-.resumen-doc-btn {
-  flex: 1 1 150px;
-  padding: 12px;
-  border-radius: 10px;
-  border: none;
-  background: linear-gradient(90deg, #FFC107 0%, #FFA000 100%);
-  color: #0D0D0D;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: opacity 0.2s ease;
-}
-
-.resumen-doc-btn {
-  background: linear-gradient(90deg, #4285F4 0%, #1A73E8 100%);
-  color: #FFFFFF;
-}
-
-.resumen-download-btn:hover:not(:disabled),
-.resumen-doc-btn:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.resumen-download-btn:disabled,
-.resumen-doc-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.resumen-canva-btn {
-  flex: 1 1 150px;
-  padding: 12px;
-  border-radius: 10px;
-  border: 2px solid var(--border-gray);
-  background: transparent;
-  color: var(--text-light);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: not-allowed;
-}
-
 .resumen-export-error {
   margin-top: 10px;
   font-size: 12px;
@@ -1152,34 +1018,8 @@ body {
 }
 
 /* Filter Group */
-.filter-btn {
-  padding: 10px 18px;
-  border: 2px solid var(--border-gray);
-  background: transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-light);
-  transition: all 0.3s ease;
-}
-
-.filter-btn:hover {
-  border-color: var(--primary);
-  color: var(--text-dark);
-}
 
 /* Desplegable de estado del aliado (Top/Bottom/Middle), coloreado por estado */
-.status-select {
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: none;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  max-width: 130px;
-}
 
 /* Accionar Urgente: estado del aliado según su % de MD Archie Final — mismo
    corte de 80% que mdStatusFor usa en el resto de la app ("mínimo cumplido"). */
@@ -1200,11 +1040,6 @@ body {
 .urgent-status.edge {
   color: #AED581;
   background: rgba(174, 213, 129, 0.14);
-}
-
-.status-select:focus {
-  outline: 2px solid var(--primary);
-  outline-offset: 1px;
 }
 
 /* Table */
@@ -1383,24 +1218,6 @@ body {
   font-size: 12px;
 }
 
-.md-drop-kam-export-btn {
-  background: transparent;
-  border: 1px solid var(--border-gray);
-  color: var(--text-light);
-  font-size: 11px;
-  font-weight: 700;
-  padding: 5px 10px;
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s ease;
-}
-
-.md-drop-kam-export-btn:hover {
-  border-color: var(--secondary);
-  color: var(--text-dark);
-}
-
 .md-drop-kam-count {
   background: rgba(244, 67, 54, 0.18);
   color: var(--danger);
@@ -1562,28 +1379,6 @@ body {
   margin-bottom: 6px;
 }
 
-.accionable-select,
-.accionable-textarea {
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 2px solid var(--border-gray);
-  background: var(--light-gray);
-  color: var(--text-dark);
-  font-size: 13px;
-  font-family: inherit;
-}
-
-.accionable-textarea {
-  resize: vertical;
-  min-height: 70px;
-}
-
-.accionable-select:focus,
-.accionable-textarea:focus {
-  outline: none;
-  border-color: var(--primary);
-}
-
 .accionable-field-hint {
   font-size: 11px;
   color: var(--text-light);
@@ -1641,17 +1436,6 @@ body {
   margin-top: 24px;
 }
 
-.accionable-week-select {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 2px solid var(--border-gray);
-  background: var(--light-gray);
-  color: var(--text-dark);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
 .accionable-empty {
   font-size: 13px;
   color: var(--text-light);
@@ -1706,24 +1490,6 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.accionable-delete {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  padding: 4px;
-  color: var(--text-light);
-  cursor: pointer;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-}
-
-.accionable-delete:hover {
-  color: var(--danger);
-  background: rgba(244, 67, 54, 0.1);
 }
 
 /* Popover de historial de brand (hover en Top/Bottom 10) */
@@ -1856,74 +1622,7 @@ body {
   animation: slideIn 0.4s ease-out;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .header {
-    padding: 15px 15px 0;
-  }
 
-  .header-top {
-    flex-direction: column;
-    gap: 15px;
-  }
-
-  .header-kam-list {
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-    overflow-x: auto;
-  }
-
-  .header-right {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .header-import-actions {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .resumen-stats-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .resumen-brands-row {
-    flex-direction: column;
-  }
-
-  .md-drop-totals-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .trend-col {
-    flex: 1 1 100%;
-  }
-
-  .trend-card-unified {
-    flex-direction: column;
-  }
-
-  .trend-diff-col {
-    border-left: none;
-    border-top: 1px solid var(--border-gray);
-    padding-left: 0;
-    padding-top: 12px;
-    width: 100%;
-  }
-
-  .tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
-
-  .container {
-    padding: 15px;
-  }
-}
 /* Avances semanales: etiqueta cuando la foto más reciente es de martes a
    viernes (avance parcial de la semana en curso) */
 .avances-partial {
@@ -1967,4 +1666,749 @@ body {
 .warning-zero {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-light);
+}
+
+/* ==========================================================================
+   Controles: botones, pestañas y selectores
+   --------------------------------------------------------------------------
+   Todos comparten esquinas de 10px, superficies translúcidas y el mismo
+   anillo de foco. Exportar Resumen es la excepción a propósito (píldora con
+   degradé rojo, ver .export-resumen-btn) para que se distinga del resto.
+   ========================================================================== */
+
+button {
+  font-family: inherit;
+}
+
+:where(button, select, textarea, input):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Navegación de KAMs (header) */
+.header-kam-list {
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.header-kam-tab {
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-light);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.18s var(--ease-out), color 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
+}
+
+.header-kam-tab:hover {
+  background: var(--surface-2);
+  color: var(--text-dark);
+}
+
+.header-kam-tab.active {
+  background: rgba(255, 82, 82, 0.12);
+  border-color: rgba(255, 82, 82, 0.4);
+  color: #FF6B6B;
+}
+
+/* Secciones por KAM (Markdown / Tarjetas): control segmentado */
+.section-tab {
+  flex: 1;
+  padding: 11px 16px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-light);
+  font-size: 14.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.18s var(--ease-out), color 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+}
+
+.section-tab:hover {
+  background: var(--surface-2);
+  color: var(--text-dark);
+}
+
+.section-tab.active {
+  background: var(--primary);
+  color: #0D0D0D;
+  box-shadow: 0 2px 12px rgba(255, 193, 7, 0.25);
+}
+
+/* Sub-pestañas de Markdown y chips del ranking */
+.subtab,
+.ranking-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-control);
+  background: var(--surface-1);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s var(--ease-out), border-color 0.18s var(--ease-out), color 0.18s var(--ease-out), transform 0.18s var(--ease-out);
+}
+
+.subtab {
+  padding: 9px 14px;
+  color: var(--text-light);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ranking-row {
+  padding: 7px 12px;
+}
+
+.subtab:hover,
+.ranking-row:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text-dark);
+}
+
+.subtab:active,
+.ranking-row:active {
+  transform: scale(0.98);
+}
+
+.subtab.active,
+.ranking-row.active {
+  background: rgba(255, 193, 7, 0.13);
+  border-color: rgba(255, 193, 7, 0.6);
+  color: var(--primary);
+}
+
+/* Posibles churn: parpadea mientras haya aliados en la lista, para que se
+   note como una alerta y no como una pestaña más. */
+.subtab-blink {
+  border-color: rgba(244, 67, 54, 0.6);
+  animation: subtabBlink 0.9s ease-in-out infinite;
+}
+
+.subtab-blink.active {
+  animation: none;
+  background: rgba(244, 67, 54, 0.18);
+  border-color: var(--danger);
+  color: #FF6B5E;
+}
+
+/* Acción principal (Descargar JPEG, Guardar Accionable): amarillo sólido */
+.resumen-download-btn,
+.resumen-doc-btn,
+.filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--primary);
+  color: #0D0D0D;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 4px 12px rgba(255, 193, 7, 0.18);
+  transition: transform 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out), filter 0.15s var(--ease-out);
+}
+
+.resumen-download-btn,
+.resumen-doc-btn {
+  flex: 1 1 150px;
+}
+
+/* Copiar para Doc: mismo formato, con el azul de Google Docs */
+.resumen-doc-btn {
+  background: #1A73E8;
+  color: #FFFFFF;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 4px 12px rgba(26, 115, 232, 0.25);
+}
+
+.resumen-download-btn:hover:not(:disabled),
+.resumen-doc-btn:hover:not(:disabled),
+.filter-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+
+.resumen-download-btn:active:not(:disabled),
+.resumen-doc-btn:active:not(:disabled),
+.filter-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.resumen-download-btn:disabled,
+.resumen-doc-btn:disabled,
+.filter-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Acción secundaria (📷 JPEG por KAM, Canva deshabilitado) */
+.md-drop-kam-export-btn,
+.resumen-canva-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  color: var(--text-dark);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s var(--ease-out), border-color 0.15s var(--ease-out);
+}
+
+.md-drop-kam-export-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.resumen-canva-btn {
+  flex: 1 1 150px;
+  padding: 11px 18px;
+  color: var(--text-light);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Botones de ícono (cerrar modal, eliminar accionable) */
+.resumen-modal-close,
+.accionable-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-light);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s var(--ease-out), color 0.15s var(--ease-out), border-color 0.15s var(--ease-out);
+}
+
+.resumen-modal-close:hover {
+  background: var(--surface-2);
+  border-color: var(--border-soft);
+  color: var(--text-dark);
+}
+
+.accionable-delete:hover {
+  background: rgba(244, 67, 54, 0.12);
+  border-color: rgba(244, 67, 54, 0.3);
+  color: var(--danger);
+}
+
+.header-alert-btn:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* Selectores y campos de texto */
+.control-select,
+.accionable-select,
+.accionable-week-select,
+.md-goal-select,
+.status-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 9px 32px 9px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-control);
+  background-color: var(--surface-2);
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  color: var(--text-dark);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s var(--ease-out), background-color 0.15s var(--ease-out);
+}
+
+.control-select:hover,
+.accionable-select:hover,
+.accionable-week-select:hover,
+.md-goal-select:hover {
+  border-color: var(--border-strong);
+}
+
+.accionable-select:focus,
+.accionable-textarea:focus {
+  border-color: var(--primary);
+}
+
+/* Estado del aliado (Top/Bottom/Middle): el color de fondo lo pone el
+   componente según el estado; acá solo tamaño y forma. */
+.status-select {
+  max-width: 140px;
+  padding: 6px 28px 6px 10px;
+  border-color: transparent;
+  background-position: right 8px center;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.md-goal-select {
+  padding: 3px 24px 3px 8px;
+  border-radius: 8px;
+  background-position: right 6px center;
+  background-size: 10px;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.accionable-week-select {
+  padding: 7px 30px 7px 10px;
+  font-size: 12px;
+}
+
+/* Las opciones del desplegable nativo, en oscuro (Windows las muestra en
+   blanco si no se les da color) */
+.control-select option,
+.accionable-select option,
+.accionable-week-select option,
+.md-goal-select option,
+.status-select option {
+  background: #1E1E1E;
+  color: #FFFFFF;
+}
+
+.accionable-textarea {
+  min-height: 80px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  color: var(--text-dark);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color 0.15s var(--ease-out);
+}
+
+.accionable-textarea::placeholder {
+  color: #7A7A7A;
+}
+
+/* Contenedores que se deslizan de costado en pantallas chicas (KAMs,
+   ranking, sub-pestañas): sin barra de scroll visible. */
+.header-kam-list::-webkit-scrollbar,
+.ranking-list::-webkit-scrollbar,
+.subtabs-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+/* ==========================================================================
+   Responsive
+   --------------------------------------------------------------------------
+   ≤ 1024px: tablet (header compacto, KAMs y sub-pestañas en una fila que se
+             desliza).
+   ≤ 640px:  celular (header de una sola fila, tarjetas y tablas compactas,
+             modales a pantalla completa, campos a 16px para que iOS no haga
+             zoom al tocarlos).
+   Pantallas táctiles: todo lo tocable mide al menos 40px.
+   ========================================================================== */
+
+@media (max-width: 1024px) {
+  .header {
+    padding: 12px 20px 0;
+  }
+
+  .header-top {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .header-title h1 {
+    font-size: 22px;
+    white-space: nowrap;
+  }
+
+  .header-title p {
+    display: none;
+  }
+
+  .header-right {
+    gap: 12px;
+  }
+
+  .header-logo {
+    height: 44px;
+  }
+
+  .sync-chip {
+    padding: 3px 8px;
+    font-size: 10.5px;
+  }
+
+  .header-kam-list,
+  .subtabs-wrapper {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .header-kam-tab,
+  .subtab {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+
+  .container {
+    padding: 20px;
+  }
+
+  /* Tablas: el nombre del aliado no se parte en 3 renglones */
+  .table td:has(> strong) {
+    min-width: 150px;
+  }
+
+  .table th {
+    white-space: nowrap;
+  }
+}
+
+/* Tablet vertical: los indicadores de sync no entran junto al título y
+   partirían el header (fijo) en dos renglones; se ocultan como en celular. */
+@media (max-width: 900px) {
+  .sync-status {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    font-size: 14px;
+  }
+
+  /* Header: una sola fila (título + logo + exportar + alerta) y abajo los KAMs */
+  .header {
+    padding: 8px 12px 0;
+  }
+
+  .header-top {
+    flex-wrap: nowrap;
+    gap: 10px;
+    padding-bottom: 6px;
+  }
+
+  .header-title {
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .header-title h1 {
+    font-size: 17px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .header-right {
+    flex-shrink: 0;
+    gap: 8px;
+  }
+
+  .sync-status {
+    display: none;
+  }
+
+  .header-logo-stack {
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .header-logo {
+    height: 30px;
+  }
+
+  /* Exportar Resumen queda solo con el ícono */
+  .export-resumen-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+    font-size: 0;
+  }
+
+  .header-alert-btn {
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+  }
+
+  .header-alert-badge {
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
+
+  .header-kam-list {
+    margin: 0 -12px;
+    padding: 6px 12px;
+  }
+
+  .header-kam-tab {
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+
+  .container {
+    padding: 12px;
+  }
+
+  .section-tabs {
+    margin-bottom: 14px;
+  }
+
+  .section-tab {
+    padding: 10px;
+    font-size: 14px;
+  }
+
+  /* Ranking: una fila de chips que se desliza */
+  .ranking-card {
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+
+  .ranking-list {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    margin: 0 -14px;
+    padding: 0 14px 2px;
+  }
+
+  .ranking-row {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+
+  .subtabs-wrapper {
+    margin: 0 -12px 14px;
+    padding: 0 12px 2px;
+  }
+
+  .subtab {
+    padding: 9px 12px;
+    font-size: 12.5px;
+  }
+
+  /* Tarjetas y tablas */
+  .table-card,
+  .minuta-card {
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+
+  .table-title {
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+
+  .table-subtitle,
+  .trend-description-text {
+    font-size: 12.5px;
+  }
+
+  .table-container {
+    margin: 0 -16px;
+    padding: 0 16px;
+  }
+
+  .table {
+    font-size: 12px;
+  }
+
+  .table th,
+  .table td {
+    padding: 10px;
+  }
+
+  .table td:has(> strong) {
+    min-width: 130px;
+  }
+
+  /* Brands with Markdown */
+  .md-target-layout {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .md-target-circle {
+    align-self: center;
+  }
+
+  .md-target-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .md-target-stat:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .md-target-stat-value {
+    font-size: 20px;
+  }
+
+  /* Gráficos de 8 semanas: el gráfico usa todo el ancho y el diferencial
+     queda abajo, en una línea */
+  .trend-columns {
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+
+  .trend-col {
+    flex: 1 1 100%;
+  }
+
+  .trend-card-unified {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .trend-diff-col {
+    flex-direction: row;
+    gap: 10px;
+    justify-content: center;
+    min-width: 0;
+    width: 100%;
+    padding: 10px 0 0;
+    border-left: none;
+    border-top: 1px solid var(--border-gray);
+  }
+
+  /* Minuta: los tres números en una fila */
+  .minuta-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .minuta-stat {
+    min-width: 0;
+    padding: 10px;
+  }
+
+  .minuta-stat-label {
+    font-size: 10px;
+  }
+
+  .minuta-stat-value {
+    font-size: 17px;
+  }
+
+  /* Accionables */
+  .accionable-form {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .accionable-item {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .accionable-item-right {
+    width: 100%;
+    justify-content: space-between;
+    padding-left: 26px;
+  }
+
+  .accionables-history-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Campos a 16px: iOS hace zoom al enfocar campos de menos de 16px */
+  .control-select,
+  .accionable-select,
+  .accionable-week-select,
+  .accionable-textarea {
+    font-size: 16px;
+  }
+
+  /* Modales a pantalla completa */
+  .resumen-modal-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .resumen-modal,
+  .md-drop-modal {
+    max-width: none;
+    max-height: none;
+    height: 100dvh;
+    border: none;
+    border-radius: 0;
+    padding: 16px;
+  }
+
+  .md-drop-kam-header {
+    flex-wrap: wrap;
+  }
+
+  .resumen-stats-row,
+  .md-drop-totals-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .resumen-brands-row {
+    flex-direction: column;
+  }
+
+  .no-data {
+    padding: 24px 12px;
+  }
+}
+
+@media (pointer: coarse) {
+  .header-kam-tab,
+  .section-tab,
+  .subtab,
+  .ranking-row,
+  .resumen-download-btn,
+  .resumen-doc-btn,
+  .filter-btn,
+  .md-drop-kam-export-btn {
+    min-height: 40px;
+  }
+
+  .resumen-modal-close,
+  .accionable-delete {
+    width: 40px;
+    height: 40px;
+  }
 }

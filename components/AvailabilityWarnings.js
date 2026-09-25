@@ -134,7 +134,7 @@ export default function AvailabilityWarnings({ kam }) {
       <div className="table-header-row">
         <div className="table-title">⚠️ Warnings de availability</div>
         {selectableDays.length > 0 && (
-          <select className="status-select" value={day} onChange={(e) => setSelectedDay(e.target.value)}>
+          <select className="control-select" value={day} onChange={(e) => setSelectedDay(e.target.value)}>
             {selectableDays.map((d) => <option key={d} value={d}>{formatDay(d)}</option>)}
           </select>
         )}
