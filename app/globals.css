@@ -1668,6 +1668,70 @@ body {
   color: var(--text-light);
 }
 
+/* Warnings de availability: estado de la carga diaria. Verde si ya se
+   actualizó hoy (o el viernes, en fin de semana); rojo si todavía no. */
+.freshness-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid;
+  border-radius: var(--radius-control);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.freshness-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 50%;
+}
+
+.freshness-ok {
+  background: rgba(76, 175, 80, 0.1);
+  border-color: rgba(76, 175, 80, 0.4);
+  color: #A5D6A7;
+}
+
+.freshness-ok strong {
+  color: #66BB6A;
+}
+
+.freshness-ok .freshness-dot {
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+}
+
+.freshness-stale {
+  background: rgba(244, 67, 54, 0.12);
+  border-color: rgba(244, 67, 54, 0.5);
+  color: #FFAB91;
+}
+
+.freshness-stale strong {
+  color: #FF6B5E;
+}
+
+.freshness-stale .freshness-dot {
+  background: var(--danger);
+  box-shadow: 0 0 6px var(--danger);
+  animation: freshnessPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes freshnessPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .freshness-stale .freshness-dot {
+    animation: none;
+  }
+}
+
 /* ==========================================================================
    Controles: botones, pestañas y selectores
    --------------------------------------------------------------------------

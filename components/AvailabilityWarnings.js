@@ -18,6 +18,30 @@ function formatDay(iso) {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: '2-digit', timeZone: 'UTC' })
 }
 
+const TZ = 'America/Argentina/Buenos_Aires'
+// Cada cuánto se vuelve a consultar si hubo una actualización nueva, para que
+// la alerta pase a verde (y los datos se refresquen) sin recargar la página.
+const FRESHNESS_POLL_MS = 5 * 60 * 1000
+
+// Fecha (AAAA-MM-DD) y hora en Argentina de un instante dado
+function localDate(date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(date)
+}
+
+function localTime(date) {
+  return date.toLocaleTimeString('es-AR', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+}
+
+// La carga automática corre de lunes a viernes: sábado y domingo alcanza con
+// que se haya actualizado el viernes.
+function expectedUpdateDate(now) {
+  const today = localDate(now)
+  const weekday = new Date(today + 'T12:00:00Z').getUTCDay()
+  if (weekday === 6) return addDays(today, -1)
+  if (weekday === 0) return addDays(today, -2)
+  return today
+}
+
 function pct(available, shouldBe) {
   return shouldBe > 0 ? (available / shouldBe) * 100 : null
 }
@@ -44,7 +68,29 @@ export default function AvailabilityWarnings({ kam }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedDay, setSelectedDay] = useState(null)
+  // Última corrida de la carga diaria (es una sola para todos los KAMs).
+  const [lastUpdate, setLastUpdate] = useState(null)
+  const [now, setNow] = useState(() => new Date())
 
+  useEffect(() => {
+    let cancelled = false
+    const check = async () => {
+      const { data, error } = await supabase
+        .from('brand_availability_daily')
+        .select('updated_at, day')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+      if (cancelled) return
+      if (error) { console.error('❌ Error consultando la última actualización:', error); return }
+      setNow(new Date())
+      if (data?.[0]) setLastUpdate(data[0].updated_at)
+    }
+    check()
+    const interval = setInterval(check, FRESHNESS_POLL_MS)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [])
+
+  // Se recarga al cambiar de KAM y cada vez que aparece una actualización nueva.
   useEffect(() => {
     if (!kam) return
     let cancelled = false
@@ -54,7 +100,19 @@ export default function AvailabilityWarnings({ kam }) {
       .catch((err) => console.error('❌ Error cargando availability diaria:', err))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [kam])
+  }, [kam, lastUpdate])
+
+  const freshness = useMemo(() => {
+    if (!lastUpdate) return null
+    const updated = new Date(lastUpdate)
+    const updatedDate = localDate(updated)
+    const expected = expectedUpdateDate(now)
+    const updatedToday = updatedDate === localDate(now)
+    return {
+      ok: updatedDate >= expected,
+      label: `${updatedToday ? 'hoy' : `el ${formatDay(updatedDate)}`} a las ${localTime(updated)} hs`,
+    }
+  }, [lastUpdate, now])
 
   const days = useMemo(() => [...new Set(rows.map((r) => r.day))].sort(), [rows])
   // Días elegibles: los que tienen 7 días de historia antes para comparar.
@@ -139,6 +197,18 @@ export default function AvailabilityWarnings({ kam }) {
           </select>
         )}
       </div>
+      {freshness && (
+        <div className={`freshness-alert ${freshness.ok ? 'freshness-ok' : 'freshness-stale'}`} role="status">
+          <span className="freshness-dot" aria-hidden="true" />
+          {freshness.ok ? (
+            <span><strong>Actualizado</strong> {freshness.label}{day ? ` · datos hasta el ${formatDay(days[days.length - 1])}` : ''}</span>
+          ) : (
+            <span>
+              <strong>Sin actualizar hoy</strong> · última actualización: {freshness.label}. La carga diaria corre a las 10:00 (PC prendida, VPN de Rappi y login de Snowflake aprobado).
+            </span>
+          )}
+        </div>
+      )}
       <p className="table-subtitle">
         Aliados que el día elegido tuvieron availability en 0% o cayeron {DROP_THRESHOLD_PTS} puntos o más contra su promedio de los {BASELINE_DAYS} días anteriores. Por defecto se muestra el último día con datos (ayer).
       </p>

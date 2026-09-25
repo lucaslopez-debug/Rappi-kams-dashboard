@@ -20,10 +20,11 @@ if (-not (Test-Path $LogsPath)) {
 }
 
 Set-Location $ProjectPath
-Add-Content -Path $LogFile -Value "`n===== $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $Job ====="
+# Todo en UTF-8: con *>> PowerShell 5.1 escribe UTF-16 y el log queda ilegible.
+Add-Content -Path $LogFile -Encoding utf8 -Value "`n===== $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $Job ====="
 if ($Job) {
-    & npm.cmd run sync:snowflake -- $Job *>> $LogFile
+    & npm.cmd run sync:snowflake -- $Job 2>&1 | Out-File -FilePath $LogFile -Append -Encoding utf8
 } else {
-    & npm.cmd run sync:snowflake *>> $LogFile
+    & npm.cmd run sync:snowflake 2>&1 | Out-File -FilePath $LogFile -Append -Encoding utf8
 }
-Add-Content -Path $LogFile -Value "exit code: $LASTEXITCODE"
+Add-Content -Path $LogFile -Encoding utf8 -Value "exit code: $LASTEXITCODE"
